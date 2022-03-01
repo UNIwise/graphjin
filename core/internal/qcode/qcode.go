@@ -430,7 +430,7 @@ func (co *Compiler) compileQuery(qc *QCode, op *graph.Operation, role string) er
 
 		if sel.Where.Exp != nil && sel.Where.Exp.Op == OpEquals {
 			col := sel.Where.Exp.Left.Col
-			if col.UniqueKey || col.PrimaryKey {
+			if col.PrimaryKey {
 				sel.Singular = true
 			}
 		}
