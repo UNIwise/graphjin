@@ -49,13 +49,13 @@ ingress:
   # annotations: 
   #   kubernetes.io/ingress.class: "nginx"
   # hosts:
-  #   - host: author.stage.wiseflow.io
+  #   - host: gql.test.eu.wiseflow.io
   #     paths: 
   #       - /
   # tls:
   #   - hosts:
-  #     - author.stage.wiseflow.io
-  #     secretName: api-author-tls
+  #     - gql.test.eu.wiseflow.io
+  #     secretName: graphjin-test-tls
 
 config:
   production: true
@@ -64,5 +64,45 @@ config:
     jwt: 
       public_key_file: /keys/public.pem
 
+database:
+  host: ""
+  port: 3306
+  user: ""
+  password: ""
+
 jwt:
   publicKey: ""
+
+queries:
+  flowParticipant.yaml: |
+    name: participant
+    query: |-
+      query participant @opa(policy: "/test/test/test") {
+        user: me {
+          id
+          firstName
+          lastName
+          participant: flowParticipantRecord(where: {flowId: $flowId}) {
+            number
+          }
+        }
+      }
+
+    vars: |-
+      {
+        "flowId": 0.0
+      }
+
+opa:
+  enabled: true
+  image:
+    tag: ""
+  distributor:
+    url: ""
+    name: "graphjin"
+    resource: ""
+  data:
+    graphQLUrl: "http://graphjin.test-graphjin-internal"
+    vpnHost: "europe-test-vpn.wiseflow.net"
+
+  annotations: {}
