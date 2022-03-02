@@ -68,8 +68,11 @@ spec:
               subPath: config.yaml
               mountPath: /config/prod.yaml
             {{- if .Values.queries }}
+            {{- range $k, $v := .Values.queries }}
             - name: "queries"
-              mountPath: /config/queries
+              subPath: {{ $k }}
+              mountPath: /config/queries/{{ $k }}
+            {{- end }}
             {{- end }}
           livenessProbe:
             httpGet:
