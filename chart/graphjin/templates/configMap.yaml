@@ -37,5 +37,5 @@ metadata:
   labels:
     {{- include "graphjin.labels" . | nindent 4 }}
 data:
-  {{ .Values.queries | toYaml }}
+  {{ .Values.queries | toYaml | nindent 2 }}
 {{ end }}
