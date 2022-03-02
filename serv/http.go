@@ -154,13 +154,13 @@ func (s1 *Service) apiV1() http.Handler {
 			}
 		}
 
-		policy, err := s.gj.GetOpaPolicy(req.Query)
-		if err != nil && s.gj.IsProd() {
-			renderErr(w, err)
-			return
-		}
-
 		if s.gj.IsProd() {
+			policy, err := s.gj.GetOpaPolicy(req.Query)
+			if err != nil {
+				renderErr(w, err)
+				return
+			}
+
 			opaClient, err := authorization.GetClient()
 			if err != nil {
 				s.log.Error(errors.Wrap(err, "failed to get OPA client"))

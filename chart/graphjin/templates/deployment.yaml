@@ -56,6 +56,8 @@ spec:
               value: {{ .Values.database.user | quote }}
             - name: GJ_DATABASE_PASSWORD
               value: {{ .Values.database.password | quote }}
+            - name: GO_ENV
+              value: {{ ternary "production" "development" .Values.config.production | quote }}
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
