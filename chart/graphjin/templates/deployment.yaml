@@ -68,7 +68,7 @@ spec:
               mountPath: /config{{ .Values.config.auth.jwt.public_key_file }}
             - name: "config"
               subPath: config.yaml
-              mountPath: /config/prod.yaml
+              mountPath: /config/{{ ternary "prod" "dev" .Values.config.production }}.yaml
             {{- if .Values.queries }}
             {{- range $k, $v := .Values.queries }}
             - name: "queries"
