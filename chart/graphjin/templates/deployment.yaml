@@ -32,14 +32,30 @@ spec:
         - name: "config"
           secret:
             secretName: {{ include "graphjin.fullname" . }}-config
+        {{- if .Values.queries }}
+        - name: "queries"
+          configMap:
+            name: {{ include "graphjin.fullname" . }}-queries
+        {{- end }}
+        {{- if .Values.opa.enabled }}
+        - name: opa-config
+          configMap:
+            name: {{ include "graphjin.fullname" . }}-opa
+        {{- end }}
       serviceAccountName: {{ include "graphjin.serviceAccountName" . }}
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          envFrom: 
-            - configMapRef: 
-                name: {{ include "graphjin.fullname" . }}
+          env:
+            - name: GJ_DATABASE_HOST
+              value: {{ .Values.database.host | quote }}
+            - name: GJ_DATABASE_PORT
+              value: {{ .Values.database.port | quote }}
+            - name: GJ_DATABASE_USER
+              value: {{ .Values.database.user | quote }}
+            - name: GJ_DATABASE_PASSWORD
+              value: {{ .Values.database.password | quote }}
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
@@ -51,6 +67,10 @@ spec:
             - name: "config"
               subPath: config
               mountPath: /config/prod.yaml
+            {{- if .Values.queries }}
+            - name: "queries"
+              mountPath: /config/queries
+            {{- end }}
           livenessProbe:
             httpGet:
               port: {{ .Values.service.port }}
@@ -61,6 +81,32 @@ spec:
               path: "/health"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+        {{- if .Values.opa.enabled }}
+        - name: opa
+          image: openpolicyagent/opa:{{ default "0.35.0" .Values.opa.image.tag }}
+          ports:
+            - name: http
+              containerPort: 8181
+              protocol: TCP
+          args:
+          - "run"
+          - "--ignore=.*"  # exclude hidden dirs created by Kubernetes
+          - "--server"
+          - "--log-format=json"
+          - "--config-file=/app/config.yaml"
+          - "/app/data.json"
+          volumeMounts:
+          - readOnly: true
+            mountPath: /app
+            name: opa-config
+          resources:
+            requests:
+              cpu: 100m
+              memory: 100Mi
+            limits:
+              cpu: 100m
+              memory: 100Mi
+        {{- end}}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
