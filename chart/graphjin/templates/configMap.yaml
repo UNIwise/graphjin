@@ -39,3 +39,13 @@ metadata:
 data:
   {{ .Values.queries | toYaml | nindent 2 }}
 {{ end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "graphjin.fullname" . }}-config
+  labels:
+    {{- include "graphjin.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    {{- .Values.config | toYaml | nindent 4 }}

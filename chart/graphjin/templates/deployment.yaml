@@ -30,8 +30,8 @@ spec:
           configMap:
             name: {{ include "graphjin.fullname" . }}-jwt-public-key
         - name: "config"
-          secret:
-            secretName: {{ include "graphjin.fullname" . }}-config
+          configMap:
+            name: {{ include "graphjin.fullname" . }}-config
         {{- if .Values.queries }}
         - name: "queries"
           configMap:
@@ -65,7 +65,7 @@ spec:
               subPath: publicKey
               mountPath: {{ .Values.config.auth.jwt.public_key_file }}
             - name: "config"
-              subPath: config
+              subPath: config.yaml
               mountPath: /config/prod.yaml
             {{- if .Values.queries }}
             - name: "queries"
