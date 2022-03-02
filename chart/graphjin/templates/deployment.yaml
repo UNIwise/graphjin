@@ -63,7 +63,7 @@ spec:
           volumeMounts:
             - name: "jwt-public-key"
               subPath: publicKey
-              mountPath: {{ .Values.config.auth.jwt.public_key_file }}
+              mountPath: /config{{ .Values.config.auth.jwt.public_key_file }}
             - name: "config"
               subPath: config.yaml
               mountPath: /config/prod.yaml
