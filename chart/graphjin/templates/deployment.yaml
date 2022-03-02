@@ -74,14 +74,6 @@ spec:
               mountPath: /config/queries/{{ $k }}
             {{- end }}
             {{- end }}
-          livenessProbe:
-            httpGet:
-              port: {{ .Values.service.port }}
-              path: "/health"
-          startupProbe:
-            httpGet:
-              port: {{ .Values.service.port }}
-              path: "/health"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
         {{- if .Values.opa.enabled }}
