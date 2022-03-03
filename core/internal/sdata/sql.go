@@ -158,3 +158,21 @@ JOIN
 WHERE
 	kcu.constraint_schema NOT IN ('_graphjin', 'information_schema', 'performance_schema', 'mysql', 'sys');
 `
+
+const mysqlIndexInfoStmt = `
+SELECT
+    tc.CONSTRAINT_SCHEMA AS "schema",
+    tc.CONSTRAINT_NAME AS "constraint",
+    tc.TABLE_NAME AS "table",
+    tc.CONSTRAINT_TYPE AS "type",
+    kcu.COLUMN_NAME AS "column"
+FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc
+INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON(
+	kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND
+	kcu.TABLE_NAME 		  = tc.TABLE_NAME AND
+	kcu.CONSTRAINT_NAME   = tc.CONSTRAINT_NAME
+)
+WHERE
+tc.CONSTRAINT_SCHEMA NOT IN ('_graphjin', 'information_schema', 'performance_schema', 'mysql', 'sys') AND
+tc.CONSTRAINT_TYPE IN ("UNIQUE", "PRIMARY KEY");
+`

@@ -428,10 +428,36 @@ func (co *Compiler) compileQuery(qc *QCode, op *graph.Operation, role string) er
 			sel.SkipRender = SkipTypeUserNeeded
 		}
 
-		if sel.Where.Exp != nil && sel.Where.Exp.Op == OpEquals {
-			col := sel.Where.Exp.Left.Col
-			if col.PrimaryKey {
-				sel.Singular = true
+		if !sel.Singular {
+			cols := make(map[string]sdata.DBColumn)
+			if sel.Where.Exp != nil {
+				switch sel.Where.Exp.Op {
+				case OpEquals:
+					cols[sel.Where.Exp.Left.Col.Name] = sel.Where.Exp.Left.Col
+				case OpAnd:
+					for _, child := range sel.Where.Children {
+						cols[child.Left.Col.Name] = child.Left.Col
+					}
+				}
+			}
+
+			if sel.Rel.Left.Col.Name != "" {
+				cols[sel.Rel.Left.Col.Name] = sel.Rel.Left.Col
+			}
+
+			indexColCount := make(map[string]int)
+			for _, col := range cols {
+				if indices, ok := sel.Ti.IndexColumns[col.Name]; ok {
+					for _, index := range indices {
+						indexColCount[index.Constraint]++
+					}
+				}
+			}
+
+			for indexName, indices := range sel.Ti.Indices {
+				if val, ok := indexColCount[indexName]; ok && val == len(indices) {
+					sel.Singular = true
+				}
 			}
 		}
 

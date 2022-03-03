@@ -253,7 +253,7 @@ func addJsonTable(conf *Config, di *sdata.DBInfo, t Table) error {
 		Type:       bc.Type,
 	}
 
-	nt := sdata.NewDBTable(bc.Schema, t.Name, bc.Type, columns)
+	nt := sdata.NewDBTable(bc.Schema, t.Name, bc.Type, columns, nil, nil)
 	nt.PrimaryCol = col1
 	nt.SecondaryCol = bt.PrimaryCol
 

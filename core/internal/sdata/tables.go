@@ -34,6 +34,22 @@ type DBTable struct {
 	FullText     []DBColumn `hash:"set"`
 	Blocked      bool
 	colMap       map[string]int `hash:"-"`
+	IndexColumns map[string][]*DBColumnIndex
+	Indices      map[string][]*DBColumnIndex
+}
+
+type DBIndexTable struct {
+	Columns map[string][]*DBColumnIndex
+	Indices map[string][]*DBColumnIndex
+}
+
+type DBColumnIndex struct {
+	Schema     string
+	Constraint string
+	Table      string
+	Type       string
+	Column     string
+	Composite  bool
 }
 
 type VirtualTable struct {
@@ -56,6 +72,7 @@ func GetDBInfo(
 	var dbSchema, dbName string
 	var cols []DBColumn
 	var funcs []DBFunction
+	var tableIndices map[string]DBIndexTable
 	var err error
 
 	g := errgroup.Group{}
@@ -84,6 +101,10 @@ func GetDBInfo(
 		if funcs, err = DiscoverFunctions(db, blockList); err != nil {
 			return err
 		}
+
+		if tableIndices, err = DiscoverIndices(db); err != nil {
+			return err
+		}
 		return nil
 	})
 
@@ -98,7 +119,9 @@ func GetDBInfo(
 		dbName,
 		cols,
 		funcs,
-		blockList)
+		tableIndices,
+		blockList,
+	)
 
 	di.hash, err = hashstructure.Hash(di, hashstructure.FormatV2, nil)
 	if err != nil {
@@ -115,6 +138,7 @@ func NewDBInfo(
 	dbName string,
 	cols []DBColumn,
 	funcs []DBFunction,
+	tableIndices map[string]DBIndexTable,
 	blockList []string) *DBInfo {
 
 	di := &DBInfo{
@@ -137,7 +161,7 @@ func NewDBInfo(
 	}
 
 	for k, tcols := range tm {
-		ti := NewDBTable(k.schema, k.table, "", tcols)
+		ti := NewDBTable(k.schema, k.table, "", tcols, tableIndices[k.table].Columns, tableIndices[k.table].Indices)
 		if strings.HasPrefix(ti.Name, "_gj_") {
 			continue
 		}
@@ -148,13 +172,15 @@ func NewDBInfo(
 	return di
 }
 
-func NewDBTable(schema, name, _type string, cols []DBColumn) DBTable {
+func NewDBTable(schema, name, _type string, cols []DBColumn, columnIndices map[string][]*DBColumnIndex, indices map[string][]*DBColumnIndex) DBTable {
 	ti := DBTable{
-		Schema:  schema,
-		Name:    name,
-		Type:    _type,
-		Columns: cols,
-		colMap:  make(map[string]int, len(cols)),
+		Schema:       schema,
+		Name:         name,
+		Type:         _type,
+		Columns:      cols,
+		colMap:       make(map[string]int, len(cols)),
+		IndexColumns: columnIndices,
+		Indices:      indices,
 	}
 
 	for i, c := range cols {
@@ -306,6 +332,42 @@ type DBFuncParam struct {
 	ID   int
 	Name sql.NullString
 	Type string
+}
+
+func DiscoverIndices(db *sql.DB) (map[string]DBIndexTable, error) {
+	rows, err := db.Query(mysqlIndexInfoStmt)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching index info: %s", err)
+	}
+	defer rows.Close()
+
+	dbIndexTables := make(map[string]DBIndexTable)
+
+	for rows.Next() {
+		var ci DBColumnIndex
+		ci.Composite = false
+		err = rows.Scan(&ci.Schema, &ci.Constraint, &ci.Table, &ci.Type, &ci.Column)
+		if err != nil {
+			return nil, err
+		}
+
+		if _, ok := dbIndexTables[ci.Table]; !ok {
+			dbIndexTables[ci.Table] = DBIndexTable{
+				Columns: make(map[string][]*DBColumnIndex),
+				Indices: make(map[string][]*DBColumnIndex),
+			}
+		}
+
+		dbIndexTables[ci.Table].Indices[ci.Constraint] = append(dbIndexTables[ci.Table].Indices[ci.Constraint], &ci)
+		if len(dbIndexTables[ci.Table].Indices[ci.Constraint]) > 1 {
+			for _, column := range dbIndexTables[ci.Table].Indices[ci.Constraint] {
+				column.Composite = true
+			}
+		}
+		dbIndexTables[ci.Table].Columns[ci.Column] = append(dbIndexTables[ci.Table].Columns[ci.Column], &ci)
+	}
+
+	return dbIndexTables, nil
 }
 
 func DiscoverFunctions(db *sql.DB, blockList []string) ([]DBFunction, error) {

@@ -75,7 +75,7 @@ func (gj *graphjin) initRemote(rc ResolverConfig, rtmap map[string]refunc) error
 		FKeyCol:    col.Name,
 	}
 
-	nt := sdata.NewDBTable(rc.Schema, rc.Name, "remote", nil)
+	nt := sdata.NewDBTable(rc.Schema, rc.Name, "remote", nil, nil, nil)
 	nt.PrimaryCol = col1
 
 	gj.dbinfo.AddTable(nt)
