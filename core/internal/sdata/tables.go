@@ -24,6 +24,8 @@ type DBInfo struct {
 	hash      uint64         `hash:"-"`
 }
 
+type DBIndices map[string][]DBColumnIndex
+
 type DBTable struct {
 	Schema       string
 	Name         string
@@ -34,13 +36,13 @@ type DBTable struct {
 	FullText     []DBColumn `hash:"set"`
 	Blocked      bool
 	colMap       map[string]int `hash:"-"`
-	IndexColumns map[string][]*DBColumnIndex
-	Indices      map[string][]*DBColumnIndex
+	IndexColumns DBIndices
+	Indices      DBIndices
 }
 
 type DBIndexTable struct {
-	Columns map[string][]*DBColumnIndex
-	Indices map[string][]*DBColumnIndex
+	Columns DBIndices
+	Indices DBIndices
 }
 
 type DBColumnIndex struct {
@@ -172,7 +174,7 @@ func NewDBInfo(
 	return di
 }
 
-func NewDBTable(schema, name, _type string, cols []DBColumn, columnIndices map[string][]*DBColumnIndex, indices map[string][]*DBColumnIndex) DBTable {
+func NewDBTable(schema, name, _type string, cols []DBColumn, columnIndices map[string][]DBColumnIndex, indices map[string][]DBColumnIndex) DBTable {
 	ti := DBTable{
 		Schema:       schema,
 		Name:         name,
@@ -353,18 +355,13 @@ func DiscoverIndices(db *sql.DB) (map[string]DBIndexTable, error) {
 
 		if _, ok := dbIndexTables[ci.Table]; !ok {
 			dbIndexTables[ci.Table] = DBIndexTable{
-				Columns: make(map[string][]*DBColumnIndex),
-				Indices: make(map[string][]*DBColumnIndex),
+				Columns: make(DBIndices),
+				Indices: make(DBIndices),
 			}
 		}
 
-		dbIndexTables[ci.Table].Indices[ci.Constraint] = append(dbIndexTables[ci.Table].Indices[ci.Constraint], &ci)
-		if len(dbIndexTables[ci.Table].Indices[ci.Constraint]) > 1 {
-			for _, column := range dbIndexTables[ci.Table].Indices[ci.Constraint] {
-				column.Composite = true
-			}
-		}
-		dbIndexTables[ci.Table].Columns[ci.Column] = append(dbIndexTables[ci.Table].Columns[ci.Column], &ci)
+		dbIndexTables[ci.Table].Indices[ci.Constraint] = append(dbIndexTables[ci.Table].Indices[ci.Constraint], ci)
+		dbIndexTables[ci.Table].Columns[ci.Column] = append(dbIndexTables[ci.Table].Columns[ci.Column], ci)
 	}
 
 	return dbIndexTables, nil
