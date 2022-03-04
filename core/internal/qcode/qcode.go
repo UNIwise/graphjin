@@ -428,10 +428,47 @@ func (co *Compiler) compileQuery(qc *QCode, op *graph.Operation, role string) er
 			sel.SkipRender = SkipTypeUserNeeded
 		}
 
-		if sel.Where.Exp != nil && sel.Where.Exp.Op == OpEquals {
-			col := sel.Where.Exp.Left.Col
-			if col.PrimaryKey {
-				sel.Singular = true
+		// Determine if the select can be singular based on the table constraints (PRIMARY and UNIQUE indices)
+		// This will clean up the output and limit the use of arrays, making it less convoluted
+		if !sel.Singular {
+			// A map of columns that are exactly matched (by either a WHERE statement or through a join relation
+			cols := make(map[string]sdata.DBColumn)
+
+			// Find exact matches through from WHERE statement
+			if sel.Where.Exp != nil {
+				switch sel.Where.Exp.Op {
+				case OpEquals: // Single
+					cols[sel.Where.Exp.Left.Col.Name] = sel.Where.Exp.Left.Col
+				case OpAnd: // Nested
+					for _, child := range sel.Where.Children {
+						if child.Op == OpEquals {
+							cols[child.Left.Col.Name] = child.Left.Col
+						}
+					}
+				}
+			}
+
+			// Find exact matches through join relation
+			if sel.Rel.Left.Col.Name != "" {
+				cols[sel.Rel.Left.Col.Name] = sel.Rel.Left.Col
+			}
+
+			// A map keeping track of selection columns matching UNIQUE or PRIVATE indices
+			indexColCount := make(map[string]int)
+			for _, col := range cols {
+				if indices, ok := sel.Ti.IndexColumns[col.Name]; ok {
+					for _, index := range indices {
+						indexColCount[index.Constraint]++
+					}
+				}
+			}
+
+			// Loop through the column counts and if they match the number of constraints in the index, set the
+			// select as 'singular'
+			for indexName, indices := range sel.Ti.Indices {
+				if val, ok := indexColCount[indexName]; ok && val == len(indices) {
+					sel.Singular = true
+				}
 			}
 		}
 

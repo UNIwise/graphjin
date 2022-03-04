@@ -77,7 +77,7 @@ func GetTestDBInfo() *DBInfo {
 		FKeyColumn: "id"},
 	}
 
-	di := NewDBInfo("", 110000, "public", "db", cols, nil, nil)
+	di := NewDBInfo("", 110000, "public", "db", cols, nil, nil, nil)
 	di.VTables = vt
 	return di
 }
