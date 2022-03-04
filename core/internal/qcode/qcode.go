@@ -324,6 +324,23 @@ func (co *Compiler) Compile(query []byte, vars Variables, role string) (*QCode, 
 	return &qc, nil
 }
 
+// Recursively get all OpEquals type expressions in a slice
+func getExpressions(exp Exp) []Exp {
+	res := make([]Exp, 0, 10)
+	switch exp.Op {
+	case OpEquals:
+		res = append(res, exp)
+	case OpAnd:
+		for _, child := range exp.Children {
+			for _, ce := range getExpressions(*child) {
+				res = append(res, ce)
+			}
+		}
+	}
+
+	return res
+}
+
 func (co *Compiler) compileQuery(qc *QCode, op *graph.Operation, role string) error {
 	var id int32
 
@@ -431,29 +448,25 @@ func (co *Compiler) compileQuery(qc *QCode, op *graph.Operation, role string) er
 		// Determine if the select can be singular based on the table constraints (PRIMARY and UNIQUE indices)
 		// This will clean up the output and limit the use of arrays, making it less convoluted
 		if !sel.Singular {
-			// A map of columns that are exactly matched (by either a WHERE statement or through a join relation
+			// A map of columns that are exactly matched (by either a WHERE statement or through a join relation)
 			cols := make(map[string]sdata.DBColumn)
 
 			// Find exact matches through from WHERE statement
 			if sel.Where.Exp != nil {
-				switch sel.Where.Exp.Op {
-				case OpEquals: // Single
-					cols[sel.Where.Exp.Left.Col.Name] = sel.Where.Exp.Left.Col
-				case OpAnd: // Nested
-					for _, child := range sel.Where.Children {
-						if child.Op == OpEquals {
-							cols[child.Left.Col.Name] = child.Left.Col
-						}
-					}
+				expressions := getExpressions(*sel.Where.Exp)
+				for _, exp := range expressions {
+					col := exp.Left.Col
+					cols[col.Name] = col
 				}
 			}
 
 			// Find exact matches through join relation
-			if sel.Rel.Left.Col.Name != "" {
-				cols[sel.Rel.Left.Col.Name] = sel.Rel.Left.Col
+			relCol := sel.Rel.Left.Col
+			if relCol.Name != "" {
+				cols[relCol.Name] = relCol
 			}
 
-			// A map keeping track of selection columns matching UNIQUE or PRIVATE indices
+			// A map keeping track of selection columns matching UNIQUE or PRIVATE constraints
 			indexColCount := make(map[string]int)
 			for _, col := range cols {
 				if indices, ok := sel.Ti.IndexColumns[col.Name]; ok {
@@ -465,8 +478,8 @@ func (co *Compiler) compileQuery(qc *QCode, op *graph.Operation, role string) er
 
 			// Loop through the column counts and if they match the number of constraints in the index, set the
 			// select as 'singular'
-			for indexName, indices := range sel.Ti.Indices {
-				if val, ok := indexColCount[indexName]; ok && val == len(indices) {
+			for indexName, constraints := range sel.Ti.Indices {
+				if val, ok := indexColCount[indexName]; ok && val == len(constraints) {
 					sel.Singular = true
 				}
 			}
