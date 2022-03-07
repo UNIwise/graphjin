@@ -137,6 +137,11 @@ func NewGraphJin(conf *Config, db *sql.DB, options ...Option) (*GraphJin, error)
 	if err := g.initDBWatcher(); err != nil {
 		return nil, err
 	}
+
+	if err := g.initFSWatcher(); err != nil {
+		return nil, err
+	}
+
 	return g, nil
 }
 

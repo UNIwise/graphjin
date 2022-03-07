@@ -13,9 +13,9 @@ require (
 	github.com/Azure/go-autorest/autorest/azure/cli v0.4.3 // indirect
 	github.com/Azure/go-autorest/autorest/to v0.4.0 // indirect
 	github.com/Azure/go-autorest/autorest/validation v0.3.1 // indirect
-	github.com/Jeffail/gabs/v2 v2.6.1
 	github.com/adjust/gorails v0.0.0-20171013043634-2786ed0c03d3
 	github.com/avast/retry-go v3.0.0+incompatible
+	github.com/bep/debounce v1.2.0
 	github.com/bradfitz/gomemcache v0.0.0-20220106215444-fb4bf637b56d
 	github.com/brianvoe/gofakeit/v6 v6.14.3
 	github.com/chirino/graphql v0.0.0-20210707003802-dfaf250c773e
@@ -73,8 +73,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )
 
-replace (
-	github.com/go-playground/validator/v10 v10.10.0 => ./core/internal/validator
-)
+replace github.com/go-playground/validator/v10 v10.10.0 => ./core/internal/validator
 
 go 1.16
