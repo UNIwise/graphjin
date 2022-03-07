@@ -106,7 +106,6 @@ func (g *GraphJin) initFSWatcher() error {
 				}
 				gj.log.Printf("%s %s\n", event.Name, event.Op)
 				debounced(invokeReload)
-
 			case err, ok := <-watcher.Errors:
 				if !ok {
 					return
