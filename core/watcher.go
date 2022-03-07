@@ -64,7 +64,6 @@ func (g *GraphJin) startDBWatcher(ps time.Duration) {
 }
 
 func (g *GraphJin) initFSWatcher() error {
-
 	gj := g.Load().(*graphjin)
 
 	go func() {
