@@ -78,6 +78,7 @@ func (g *GraphJin) initFSWatcher() error {
 			fmt.Sprintf("%s/fragments/", gj.conf.ConfigPath),
 			fmt.Sprintf("%s/queries/", gj.conf.ConfigPath),
 			fmt.Sprintf("%s/scripts/", gj.conf.ConfigPath),
+			fmt.Sprintf("%s/keys/", gj.conf.ConfigPath),
 		}
 
 		for _, path := range watchPaths {
