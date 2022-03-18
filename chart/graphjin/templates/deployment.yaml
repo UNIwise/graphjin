@@ -15,7 +15,6 @@ spec:
         {{- include "graphjin.selectorLabels" . | nindent 8 }}
       annotations: 
         checksum/config: {{ toJson .Values.config | sha256sum | quote }}
-        checksum/jwt: {{ .Values.jwt.publicKey | sha256sum | quote }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -25,62 +24,57 @@ spec:
         {{- toYaml . | nindent 8 }}
     {{- end }}
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
-      volumes:
-        - name: "jwt-public-key"
-          configMap:
-            name: {{ include "graphjin.fullname" . }}-jwt-public-key
-        - name: "config"
-          configMap:
-            name: {{ include "graphjin.fullname" . }}-config
-        {{- if .Values.queries }}
-        - name: "queries"
-          configMap:
-            name: {{ include "graphjin.fullname" . }}-queries
-        {{- end }}
-        {{- if .Values.opa.enabled }}
-        - name: opa-config
-          configMap:
-            name: {{ include "graphjin.fullname" . }}-opa
-        {{- end }}
       serviceAccountName: {{ include "graphjin.serviceAccountName" . }}
       containers:
-        - name: {{ .Chart.Name }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+        - name: git-sync
+          image: k8s.gcr.io/git-sync:v3.1.3
+          volumeMounts:
+          - name: config
+            mountPath: /tmp/git
+          - name: sparse
+            mountPath: /etc/git-sync/
+          env:
+          - name: GIT_SYNC_REPO
+            value: {{ .Values.gitSync.repo }}
+          - name: GIT_SYNC_WAIT
+            value: {{ .Values.gitSync.intervalSeconds }}
+          - name: GIT_SYNC_DEST
+            value: git-sync
+          - name: GIT_SYNC_SPARSE_CHECKOUT_FILE
+            value: /etc/git-sync/.gitsparse
+          resources:
+            {{- toYaml .Values.gitSync.resources | nindent 12 }}
+        - name: graphjin
+          image: "{{ .Values.graphjin.image.repository }}:{{ .Values.graphjin.image.tag }}"
+          imagePullPolicy: {{ .Values.graphjin.image.pullPolicy }}
+          args:
+            - "serv"
+            - "--path"
+            - {{ printf "/config/%s/%s/" .Values.environment (ternary "external" "internal" .Values.external) | quote }}
+            - {{ ternary "prod.yml" "dev.yml" .Values.external | quote }}
           env:
             - name: GJ_DATABASE_HOST
-              value: {{ .Values.database.host | quote }}
+              value: {{ .Values.graphjin.database.host | quote }}
             - name: GJ_DATABASE_PORT
-              value: {{ .Values.database.port | quote }}
+              value: {{ .Values.graphjin.database.port | quote }}
             - name: GJ_DATABASE_USER
-              value: {{ .Values.database.user | quote }}
+              value: {{ .Values.graphjin.database.user | quote }}
             - name: GJ_DATABASE_PASSWORD
-              value: {{ .Values.database.password | quote }}
+              value: {{ .Values.graphjin.database.password | quote }}
             - name: GO_ENV
-              value: {{ ternary "production" "development" .Values.config.production | quote }}
+              value: {{ ternary "production" "development" .Values.external | quote }}
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
               protocol: TCP
-          volumeMounts:
-            - name: "jwt-public-key"
-              subPath: publicKey
-              mountPath: /config{{ .Values.config.auth.jwt.public_key_file }}
-            - name: "config"
-              subPath: config.yaml
-              mountPath: /config/{{ ternary "prod" "dev" .Values.config.production }}.yaml
-            {{- if .Values.queries }}
-            {{- range $k, $v := .Values.queries }}
-            - name: "queries"
-              subPath: {{ $k }}
-              mountPath: /config/queries/{{ $k }}
-            {{- end }}
-            {{- end }}
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
-        {{- if .Values.opa.enabled }}
+            {{- toYaml .Values.graphjin.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /config
+        {{- if .Values.opaClient.enabled }}
         - name: opa
-          image: openpolicyagent/opa:{{ default "0.35.0" .Values.opa.image.tag }}
+          image: openpolicyagent/opa:{{ default "0.35.0" .Values.opaClient.image.tag }}
           ports:
             - name: http
               containerPort: 8181
@@ -97,13 +91,19 @@ spec:
             mountPath: /app
             name: opa-config
           resources:
-            requests:
-              cpu: 100m
-              memory: 100Mi
-            limits:
-              cpu: 100m
-              memory: 100Mi
+            {{- toYaml .Values.opaClient.resources | nindent 12 }}
         {{- end}}
+      volumes:
+        - name: config
+          emptyDir: {}
+        - name: git-sync
+          configMap:
+            name: sherlock-config
+        {{- if .Values.opaClient.enabled }}
+        - name: opa-config
+          configMap:
+            name: {{ include "graphjin.fullname" . }}-opa
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

@@ -1,13 +1,4 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: {{ include "graphjin.fullname" . }}-jwt-public-key
-  labels:
-    {{- include "graphjin.labels" . | nindent 4 }}
-data: 
-  publicKey: {{ .Values.jwt.publicKey | quote }}
----
-{{- if .Values.opa.enabled }}
+{{- if .Values.opaClient.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -20,32 +11,23 @@ data:
   config.yaml: |
     services:
     - name: distributor
-      url: {{ .Values.opa.distributor.url }}
+      url: {{ .Values.opaClient.distributor.url }}
 
     discovery:
-      resource: {{ default (printf "/configuration/%s/discovery.tar.gz" ( .Chart.Name )) .Values.opa.distributor.resource }}
+      resource: {{ default (printf "/configuration/%s/discovery.tar.gz" ( .Chart.Name )) .Values.opaClient.distributor.resource }}
       service: distributor
   data.json: |
-    {{ .Values.opa.data | toJson }}
+    {{ .Values.opaClient.data | toJson }}
 {{- end }}
 ---
-{{- if .Values.queries }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "graphjin.fullname" . }}-queries
+  name: {{ include "graphjin.fullname" . }}-git-sync
   labels:
-    {{- include "graphjin.labels" . | nindent 4 }}
+    helm.sh/chart: {{ include "graphjin.chart" . }}
+    {{ include "graphjin.labels" . | nindent 4 }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
 data:
-  {{ .Values.queries | toYaml | nindent 2 }}
-{{ end }}
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: {{ include "graphjin.fullname" . }}-config
-  labels:
-    {{- include "graphjin.labels" . | nindent 4 }}
-data:
-  config.yaml: |
-    {{- .Values.config | toYaml | nindent 4 }}
+  .gitsparse: |
+    {{ printf "/%s/%s/" .Values.environment (ternary "external" "internal" .Values.external) }}
