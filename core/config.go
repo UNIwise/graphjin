@@ -120,6 +120,8 @@ type Config struct {
 	// change is detected
 	DBSchemaPollDuration time.Duration `mapstructure:"db_schema_poll_every_seconds"`
 
+	DisableDBWatcher bool `mapstructure:"disable_db_watcher"`
+
 	rtmap map[string]refunc
 	tmap  map[string]qcode.TConfig
 }

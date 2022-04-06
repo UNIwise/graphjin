@@ -17,6 +17,10 @@ func (g *GraphJin) initDBWatcher() error {
 		return nil
 	}
 
+	if gj.conf.DisableDBWatcher {
+		return nil
+	}
+
 	var ps time.Duration
 
 	switch d := gj.conf.DBSchemaPollDuration; {
