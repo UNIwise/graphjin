@@ -160,7 +160,7 @@ func (c *expContext) renderOp(ex *qcode.Exp) {
 	case qcode.OpLesserThan:
 		c.w.WriteString(`<`)
 	case qcode.OpIn:
-		c.w.WriteString(`= ANY`)
+		c.w.WriteString(`IN`)
 	case qcode.OpNotIn:
 		c.w.WriteString(`!= ALL`)
 	case qcode.OpLike:
@@ -376,7 +376,7 @@ func (c *expContext) renderValVar(ex *qcode.Exp) {
 }
 
 func (c *expContext) renderList(ex *qcode.Exp) {
-	c.w.WriteString(`(ARRAY[`)
+	c.w.WriteString(`(`)
 	for i := range ex.Right.ListVal {
 		if i != 0 {
 			c.w.WriteString(`, `)
@@ -390,7 +390,7 @@ func (c *expContext) renderList(ex *qcode.Exp) {
 			c.w.WriteString(`'`)
 		}
 	}
-	c.w.WriteString(`])`)
+	c.w.WriteString(`)`)
 }
 
 func (c *expContext) writeSqlFunc(val string) {
