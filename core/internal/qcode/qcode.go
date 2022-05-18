@@ -483,6 +483,11 @@ func (co *Compiler) compileQuery(qc *QCode, op *graph.Operation, role string) er
 					sel.Singular = true
 				}
 			}
+
+			// If the selection is has 'limit: 1' make the selection singular
+			if sel.Paging.Limit == 1 {
+				sel.Singular = true
+			}
 		}
 
 		// If an actual cursor is available
