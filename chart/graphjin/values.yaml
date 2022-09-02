@@ -32,14 +32,8 @@ disruptionBudget:
   enabled: true
   maxUnavailable: 1
 
-resources: 
-  limits:
-    cpu: 200m
-    memory: 100Mi
-  requests:
-    cpu: 50m
-    memory: 100Mi
-
+resources: {}
+  
 service:
   type: ClusterIP
   port: 8080
