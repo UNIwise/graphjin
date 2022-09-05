@@ -21,6 +21,7 @@ require (
 	github.com/chirino/graphql v0.0.0-20210707003802-dfaf250c773e
 	github.com/containerd/containerd v1.5.9 // indirect
 	github.com/dop251/goja v0.0.0-20220110113543-261677941f3c
+	github.com/felixge/fgprof v0.9.3
 	github.com/fsnotify/fsnotify v1.5.1
 	github.com/git-chglog/git-chglog v0.15.1
 	github.com/go-http-utils/headers v0.0.0-20181008091004-fed159eddc2a
@@ -60,7 +61,7 @@ require (
 	github.com/spf13/afero v1.8.0
 	github.com/spf13/cobra v1.3.0
 	github.com/spf13/viper v1.10.1
-	github.com/stretchr/testify v1.7.0
+	github.com/stretchr/testify v1.8.0
 	github.com/tj/assert v0.0.3
 	go.mozilla.org/sops/v3 v3.7.1
 	go.opencensus.io v0.23.0
@@ -70,7 +71,7 @@ require (
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/time v0.0.0-20211116232009-f0f3c7e86c11
 	golang.org/x/tools v0.1.8
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 replace github.com/go-playground/validator/v10 v10.10.0 => ./core/internal/validator

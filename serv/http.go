@@ -111,6 +111,10 @@ func (s1 *Service) apiV1() http.Handler {
 			return
 		}
 
+		if s.conf.EnableTracing {
+			s.log.Infof("apiV1 time 1: %f", time.Since(start).Seconds())
+		}
+
 		if websocket.IsWebSocketUpgrade(r) {
 			s.apiV1Ws(w, r)
 			return
@@ -154,7 +158,11 @@ func (s1 *Service) apiV1() http.Handler {
 			}
 		}
 
-		if s.gj.IsProd() {
+		if s.conf.EnableTracing {
+			s.log.Infof("apiV1 time 2: %f", time.Since(start).Seconds())
+		}
+
+		if s.gj.IsProd() && !s.conf.DisableAllowList {
 			policy, err := s.gj.GetOpaPolicy(req.Query)
 			if err != nil {
 				renderErr(w, err)
@@ -182,6 +190,10 @@ func (s1 *Service) apiV1() http.Handler {
 			}
 		}
 
+		if s.conf.EnableTracing {
+			s.log.Infof("apiV1 time 3: %f", time.Since(start).Seconds())
+		}
+
 		switch {
 		case s.gj.IsProd():
 			rc.APQKey = req.OpName
@@ -194,7 +206,15 @@ func (s1 *Service) apiV1() http.Handler {
 			return
 		}
 
+		if s.conf.EnableTracing {
+			s.log.Infof("apiV1 time 4: %f", time.Since(start).Seconds())
+		}
+
 		res, err := s.gj.GraphQL(ct, req.Query, req.Vars, &rc)
+
+		if s.conf.EnableTracing {
+			s.log.Infof("apiV1 time 5: %f", time.Since(start).Seconds())
+		}
 
 		if err == nil && r.Method == "GET" && res.Operation() == core.OpQuery {
 			switch {
@@ -204,6 +224,10 @@ func (s1 *Service) apiV1() http.Handler {
 			case s.conf.CacheControl != "":
 				w.Header().Set("Cache-Control", s.conf.CacheControl)
 			}
+		}
+
+		if s.conf.EnableTracing {
+			s.log.Infof("apiV1 time 6: %f", time.Since(start).Seconds())
 		}
 
 		if err := json.NewEncoder(w).Encode(res); err != nil {
@@ -225,6 +249,10 @@ func (s1 *Service) apiV1() http.Handler {
 			ochttp.SetRoute(ct, apiRoute)
 		}
 
+		if s.conf.EnableTracing {
+			s.log.Infof("apiV1 time 7: %f", time.Since(start).Seconds())
+		}
+
 		rt := time.Since(start).Milliseconds()
 
 		if s.logLevel >= logLevelInfo {
@@ -235,6 +263,10 @@ func (s1 *Service) apiV1() http.Handler {
 			b := []byte("DB;dur=")
 			b = strconv.AppendInt(b, rt, 10)
 			w.Header().Set("Server-Timing", string(b))
+		}
+
+		if s.conf.EnableTracing {
+			s.log.Infof("apiV1 time 8: %f", time.Since(start).Seconds())
 		}
 	}
 

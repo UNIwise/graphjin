@@ -89,9 +89,6 @@ type Serv struct {
 	// Enable the web UI. Disabled in production
 	WebUI bool `mapstructure:"web_ui"`
 
-	// EnableTracing enables OpenTrace request tracing
-	EnableTracing bool `mapstructure:"enable_tracing"`
-
 	// WatchAndReload enables reloading the service on config changes
 	WatchAndReload bool `mapstructure:"reload_on_config_change"`
 

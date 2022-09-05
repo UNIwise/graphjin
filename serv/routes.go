@@ -11,6 +11,8 @@ import (
 	"github.com/klauspost/compress/gzhttp"
 	"go.opencensus.io/plugin/ochttp"
 	"go.uber.org/zap"
+
+	"github.com/felixge/fgprof"
 )
 
 const (
@@ -38,6 +40,10 @@ func routeHandler(s1 *Service, mux *http.ServeMux) (http.Handler, error) {
 		mux.Handle(common.RollbackRoute, adminRollbackHandler(s1))
 		// Deploy Config API
 		mux.Handle(common.DeployRoute, adminDeployHandler(s1))
+	}
+
+	if s.conf.EnableTracing {
+		mux.Handle("/debug/fgprof", fgprof.Handler())
 	}
 
 	if err := setActionRoutes(s1, mux); err != nil {

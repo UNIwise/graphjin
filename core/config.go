@@ -82,6 +82,9 @@ type Config struct {
 	// removed in next major version
 	EnableInflection bool `mapstructure:"enable_inflection"`
 
+	// EnableTracing enables OpenTrace request tracing
+	EnableTracing bool `mapstructure:"enable_tracing"`
+
 	// Customize singular suffix
 	// By default is set to "ByID"
 	SingularSuffix string `mapstructure:"singular_suffix"`

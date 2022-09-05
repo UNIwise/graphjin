@@ -295,13 +295,17 @@ func (c *gcontext) resolveSQL(qr queryReq, role string) (queryResp, error) {
 		return res, err
 	}
 
-	// var stime time.Time
+	var stime time.Time
 
-	// if c.gj.conf.EnableTracing {
-	// 	stime = time.Now()
-	// }
+	if c.gj.conf.EnableTracing {
+		stime = time.Now()
+	}
 
 	row := conn.QueryRowContext(c, qcomp.st.sql, args.values...)
+
+	if c.gj.conf.EnableTracing {
+		c.gj.log.Printf("core.resolveSql - QueryRowContext time: %f", time.Since(stime).Seconds())
+	}
 
 	if err := row.Scan(&res.data); err == sql.ErrNoRows {
 		return res, nil
