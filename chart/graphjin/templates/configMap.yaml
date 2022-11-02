@@ -40,6 +40,17 @@ data:
   {{ .Values.queries | toYaml | nindent 2 }}
 {{ end }}
 ---
+{{- if .Values.scripts }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "graphjin.fullname" . }}-scripts
+  labels:
+    {{- include "graphjin.labels" . | nindent 4 }}
+data:
+  {{ .Values.scripts | toYaml | nindent 2 }}
+{{ end }}
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:

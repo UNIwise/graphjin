@@ -73,25 +73,27 @@ database:
 jwt:
   publicKey: ""
 
-queries:
-  flowParticipant.yaml: |
-    name: participant
-    query: |-
-      query participant @opa(policy: "/test/test/test") {
-        user: me {
-          id
-          firstName
-          lastName
-          participant: flowParticipantRecord(where: {flowId: $flowId}) {
-            number
-          }
-        }
-      }
+queries: {}
+#  flowParticipant.yaml: |
+#    name: participant
+#    query: |-
+#      query participant @opa(policy: "/test/test/test") {
+#        user: me {
+#          id
+#          firstName
+#          lastName
+#          participant: flowParticipantRecord(where: {flowId: $flowId}) {
+#            number
+#          }
+#        }
+#      }
+#
+#    vars: |-
+#      {
+#        "flowId": 0.0
+#      }
+scripts: {}
 
-    vars: |-
-      {
-        "flowId": 0.0
-      }
 
 opa:
   enabled: true

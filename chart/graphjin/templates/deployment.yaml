@@ -37,6 +37,11 @@ spec:
           configMap:
             name: {{ include "graphjin.fullname" . }}-queries
         {{- end }}
+        {{- if .Values.scripts }}
+        - name: "scripts"
+          configMap:
+            name: {{ include "graphjin.fullname" . }}-scripts
+        {{- end }}
         {{- if .Values.opa.enabled }}
         - name: opa-config
           configMap:
@@ -62,6 +67,9 @@ spec:
             - name: http
               containerPort: {{ .Values.service.port }}
               protocol: TCP
+            - name: httpInternal
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
           volumeMounts:
             - name: "jwt-public-key"
               subPath: publicKey
@@ -74,6 +82,13 @@ spec:
             - name: "queries"
               subPath: {{ $k }}
               mountPath: /config/queries/{{ $k }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.scripts }}
+            {{- range $k, $v := .Values.scripts }}
+            - name: "scripts"
+              subPath: {{ $k }}
+              mountPath: /config/scripts/{{ $k }}
             {{- end }}
             {{- end }}
           resources:
