@@ -65,10 +65,10 @@ spec:
               value: {{ ternary "production" "development" .Values.config.production | quote }}
           ports:
             - name: http
-              containerPort: {{ .Values.service.port }}
+              containerPort: {{ .Values.service.external.port }}
               protocol: TCP
             - name: httpInternal
-              containerPort: {{ .Values.service.port }}
+              containerPort: {{ .Values.service.internal.port }}
               protocol: TCP
           volumeMounts:
             - name: "jwt-public-key"
