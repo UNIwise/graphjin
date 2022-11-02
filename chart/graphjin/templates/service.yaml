@@ -24,7 +24,7 @@ spec:
   type: ClusterIP
   ports:
     - port: {{ .Values.service.internal.port }}
-      targetPort: httpInternal
+      targetPort: http-internal
       protocol: TCP
       name: http
   selector:

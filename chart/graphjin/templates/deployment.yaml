@@ -67,7 +67,7 @@ spec:
             - name: http
               containerPort: {{ .Values.service.external.port }}
               protocol: TCP
-            - name: httpInternal
+            - name: http-internal
               containerPort: {{ .Values.service.internal.port }}
               protocol: TCP
           volumeMounts:
