@@ -41,8 +41,12 @@ resources:
     memory: 100Mi
 
 service:
-  type: ClusterIP
-  port: 8080
+  internal:
+    type: ClusterIP
+    port: 8888
+  external:
+    type: ClusterIP
+    port: 8080
 
 ingress:
   enabled: false
