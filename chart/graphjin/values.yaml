@@ -68,6 +68,12 @@ config:
     jwt: 
       public_key_file: /keys/public.pem
 
+  database:
+    host: ""
+    port: 3306
+    user: ""
+    password: ""
+
 database:
   host: ""
   port: 3306
