@@ -338,7 +338,11 @@ func (c *compilerContext) renderBaseSelect(sel *qcode.Select) {
 	c.w.WriteString(`SELECT `)
 	c.renderDistinctOn(sel)
 	n := c.renderBaseColumns(sel)
-	c.renderFunctions(sel, n)
+	if n > 0 {
+		c.renderFunctions(sel, n)
+	} else {
+		c.w.WriteString(`* `)
+	}
 	c.renderFrom(sel)
 	c.renderJoinTables(sel)
 	c.renderFromCursor(sel)
