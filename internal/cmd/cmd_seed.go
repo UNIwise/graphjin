@@ -56,7 +56,16 @@ func compileAndRunJS(seed string, db *sql.DB) error {
 		return fmt.Errorf("Failed to read seed file %s: %s", seed, err)
 	}
 
-	gj, err := core.NewGraphJin(&conf.Core, db)
+	dbConfig := core.DBConfig{
+		Host:        conf.DB.ConfDBHost,
+		Port:        conf.DB.Port,
+		User:        conf.DB.User,
+		Password:    conf.DB.Password,
+		Name:        conf.DB.ConfDBName,
+		CronPattern: conf.ExternalConfigSyncCronPattern,
+	}
+
+	gj, err := core.NewGraphJin(&conf.Core, db, &dbConfig)
 	if err != nil {
 		return err
 	}

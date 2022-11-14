@@ -25,6 +25,10 @@ type Config struct {
 	// even in production (Warning possible security concern)
 	DisableAllowList bool `mapstructure:"disable_allow_list"`
 
+	// DisableOPAPolicies when set to true disables the
+	// OPA policy check even in production (Warning possible security concern)
+	DisableOPAPolicies bool `mapstructure:"disable_opa_policies"`
+
 	// ConfigPath is the default path to find all configuration
 	// files and scripts under
 	ConfigPath string `mapstructure:"config_path"`

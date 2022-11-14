@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strings"
 	"sync"
 
 	"github.com/dosco/graphjin/core/internal/psql"
@@ -23,6 +25,12 @@ type stmt struct {
 	md   psql.Metadata
 	va   *validator.Validate
 	sql  string
+}
+
+var trimPattern = regexp.MustCompile(`\t|\n|\r|\s|,`)
+
+func trimQuery(query string) string {
+	return trimPattern.ReplaceAllString(query, "")
 }
 
 func (gj *graphjin) compileQuery(qr queryReq, role string) (*queryComp, error) {
@@ -52,6 +60,14 @@ func (gj *graphjin) compileQuery(qr queryReq, role string) (*queryComp, error) {
 	if qc, ok = gj.queries[(qr.name + role)]; !ok {
 		return nil, errNotFound
 	}
+
+	storedQuery := trimQuery(string(qc.qr.query))
+	incomingQuery := trimQuery(string(qr.query))
+	res := strings.Compare(storedQuery, incomingQuery)
+	if res != 0 {
+		return nil, errNotFound
+	}
+
 	ov := qc.qr.order[0]
 
 	// If order variable is set

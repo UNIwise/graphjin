@@ -138,6 +138,16 @@ func (s *service) initConfig() error {
 		s.conf.hostPort = defaultHP
 	}
 
+	s.conf.internalHostPort = s.conf.InternalHostPort
+	if s.conf.internalHostPort == "" {
+		s.conf.internalHostPort = defaultIntHP
+	}
+
+	s.conf.ecCronPattern = s.conf.ExternalConfigSyncCronPattern
+	if s.conf.ecCronPattern == "" {
+		s.conf.ecCronPattern = defaultECCronPattern
+	}
+
 	c.Core.Production = c.Serv.Production
 	return nil
 }

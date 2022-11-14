@@ -30,14 +30,16 @@ type Config struct {
 	// Admin holds config values for adminstrationof GraphJin Service
 	Admin `mapstructure:",squash"`
 
-	hostPort string
-	hash     string
-	name     string
-	dirty    bool
-	vi       *viper.Viper
+	hostPort         string
+	internalHostPort string
+	ecCronPattern    string
+	hash             string
+	name             string
+	dirty            bool
+	vi               *viper.Viper
 }
 
-// Admin struct contains config values used for adminstration of the
+// Admin struct contains config values used for administration of the
 // GraphJin service
 type Admin struct {
 	// HotDeploy enables the ability to hot-deploy a new configuration
@@ -73,6 +75,12 @@ type Serv struct {
 
 	// HostPost to run the service on. Example localhost:8080
 	HostPort string `mapstructure:"host_port"`
+
+	// HostPost to run the config lister on. Example localhost:8888
+	InternalHostPort string `mapstructure:"internal_host_port"`
+
+	// Cron pattern to dictate when the config will be fetched from the database. Example: * * * * *, for every minute
+	ExternalConfigSyncCronPattern string `mapstructure:"external_config_sync_cron_pattern"`
 
 	// Host to run the service on
 	Host string
@@ -136,6 +144,8 @@ type Database struct {
 	DBName          string
 	User            string
 	Password        string
+	ConfDBName      string `mapstructure:"conf_dbname"`
+	ConfDBHost      string `mapstructure:"conf_dbhost"`
 	Schema          string
 	PoolSize        int           `mapstructure:"pool_size"`
 	MaxConnections  int           `mapstructure:"max_connections"`

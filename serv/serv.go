@@ -17,8 +17,10 @@ import (
 )
 
 const (
-	serverName = "GraphJin"
-	defaultHP  = "0.0.0.0:8080"
+	serverName           = "GraphJin"
+	defaultHP            = "0.0.0.0:8080"
+	defaultIntHP         = "0.0.0.0:8888"
+	defaultECCronPattern = "* * * * *"
 )
 
 var (

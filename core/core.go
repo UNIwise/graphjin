@@ -148,6 +148,25 @@ func (gj *graphjin) _initSchema() error {
 	return err
 }
 
+func (gj *graphjin) fragmentFetcher() func(name string) (string, error) {
+	fetcher := gj.allowList.FragmentFetcher()
+	return func(name string) (string, error) {
+		var err error
+		var frag string
+		frag, err = fetcher(name)
+		if err == nil {
+			return frag, nil
+		}
+
+		frag, err = gj.externalConfig.LoadFragment(name)
+		if err != nil {
+			return "", err
+		}
+
+		return frag, err
+	}
+}
+
 func (gj *graphjin) initCompilers() error {
 	var err error
 
@@ -163,7 +182,7 @@ func (gj *graphjin) initCompilers() error {
 	}
 
 	if gj.allowList != nil && gj.prod {
-		qcc.FragmentFetcher = gj.allowList.FragmentFetcher()
+		qcc.FragmentFetcher = gj.fragmentFetcher()
 	}
 
 	gj.qc, err = qcode.NewCompiler(gj.schema, qcc)
@@ -281,9 +300,25 @@ func (c *gcontext) resolveSQL(qr queryReq, role string) (queryResp, error) {
 	}
 
 	var qcomp *queryComp
-	if qcomp, err = c.gj.compileQuery(qr, res.role); err != nil {
-		return res, err
+	qcomp, err = c.gj.compileQuery(qr, res.role)
+	if err != nil {
+		// Try loading the latest queries from the external config
+		if errors.Is(err, errNotFound) {
+			err := c.gj.externalConfig.Load()
+			if err != nil {
+				c.gj.log.Printf("failed to fetch updates from external config")
+				return res, errNotFound
+			}
+
+			qcomp, err = c.gj.compileQuery(qr, res.role)
+			if err != nil {
+				return res, err
+			}
+		} else {
+			return res, err
+		}
 	}
+
 	res.qc = qcomp
 
 	if err := c.handleVars(qcomp, &res); err != nil {

@@ -71,6 +71,7 @@ type service struct {
 	db           *sql.DB            // database connection pool
 	gj           *core.GraphJin
 	srv          *http.Server
+	intSrv       *http.Server
 	fs           afero.Fs
 	asec         [32]byte
 	closeFn      func()
@@ -176,8 +177,21 @@ func newGraphJinService(conf *Config, db *sql.DB, options ...Option) (*service, 
 
 func (s *service) normalStart() error {
 	var err error
-	s.gj, err = core.NewGraphJin(&s.conf.Core, s.db, core.OptionSetFS(s.fs))
+
+	dbConf := s.getDBConfig()
+	s.gj, err = core.NewGraphJin(&s.conf.Core, s.db, &dbConf, core.OptionSetFS(s.fs))
 	return err
+}
+
+func (s *service) getDBConfig() core.DBConfig {
+	return core.DBConfig{
+		Host:        s.conf.DB.ConfDBHost,
+		Port:        s.conf.DB.Port,
+		User:        s.conf.DB.User,
+		Password:    s.conf.DB.Password,
+		Name:        s.conf.DB.ConfDBName,
+		CronPattern: s.conf.ecCronPattern,
+	}
 }
 
 func (s *service) hotStart() error {
@@ -210,7 +224,8 @@ func (s *service) hotStart() error {
 		return err
 	}
 
-	s.gj, err = core.NewGraphJin(&s.conf.Core, s.db, core.OptionSetFS(bfs.fs))
+	dbConf := s.getDBConfig()
+	s.gj, err = core.NewGraphJin(&s.conf.Core, s.db, &dbConf, core.OptionSetFS(bfs.fs))
 	return err
 }
 
@@ -234,7 +249,8 @@ func (s1 *Service) Deploy(conf *Config, options ...Option) error {
 }
 
 func (s1 *Service) Start() error {
-	startHTTP(s1)
+	go startHTTP(s1)
+	startInternalHTTP(s1)
 	return nil
 }
 

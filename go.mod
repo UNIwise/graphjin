@@ -20,6 +20,7 @@ require (
 	github.com/brianvoe/gofakeit/v6 v6.14.3
 	github.com/chirino/graphql v0.0.0-20210707003802-dfaf250c773e
 	github.com/containerd/containerd v1.5.9 // indirect
+	github.com/denisenkom/go-mssqldb v0.12.0 // indirect
 	github.com/dop251/goja v0.0.0-20220110113543-261677941f3c
 	github.com/felixge/fgprof v0.9.3
 	github.com/fsnotify/fsnotify v1.5.1
@@ -31,6 +32,7 @@ require (
 	github.com/go-sql-driver/mysql v1.6.0
 	github.com/gobuffalo/flect v0.2.4
 	github.com/golang-jwt/jwt v3.2.2+incompatible
+	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
 	github.com/gomodule/redigo v1.8.8
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
@@ -39,7 +41,7 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.0 // indirect
 	github.com/hashicorp/golang-lru v0.5.5-0.20210104140557-80c98217689d
 	github.com/huandu/xstrings v1.3.2 // indirect
-	github.com/jackc/pgx/v4 v4.14.1
+	github.com/jackc/pgx/v4 v4.15.0
 	github.com/joho/godotenv v1.4.0
 	github.com/jvatic/goja-babel v0.0.0-20220112112033-3ef795a80dfc
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0
@@ -55,6 +57,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/common v0.32.1 // indirect
 	github.com/prometheus/procfs v0.7.3 // indirect
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/rs/cors v1.8.2
 	github.com/rs/xid v1.3.0
 	github.com/sergi/go-diff v1.2.0 // indirect
@@ -66,12 +69,14 @@ require (
 	go.mozilla.org/sops/v3 v3.7.1
 	go.opencensus.io v0.23.0
 	go.uber.org/zap v1.20.0
-	golang.org/x/crypto v0.0.0-20220112180741-5e0467b6c7ce
+	golang.org/x/crypto v0.0.0-20220214200702-86341886e292
 	golang.org/x/perf v0.0.0-20211012211434-03971e389cd3
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/time v0.0.0-20211116232009-f0f3c7e86c11
 	golang.org/x/tools v0.1.8
 	gopkg.in/yaml.v3 v3.0.1
+	gorm.io/driver/mysql v1.3.6
+	gorm.io/gorm v1.23.8
 )
 
 replace github.com/go-playground/validator/v10 v10.10.0 => ./core/internal/validator

@@ -9,7 +9,7 @@ import (
 	"github.com/dop251/goja"
 )
 
-func (c *gcontext) httpFunc(method string, url goja.Value, args ...goja.Value) goja.Value {
+func (sc *script) httpFunc(method string, url goja.Value, args ...goja.Value) goja.Value {
 	var body interface{}
 	var b io.Reader
 	//var headers goja.Value
@@ -53,13 +53,13 @@ func (c *gcontext) httpFunc(method string, url goja.Value, args ...goja.Value) g
 	if err != nil {
 		panic(err)
 	}
-	return c.sc.vm.ToValue(string(buf))
+	return sc.vm.ToValue(string(buf))
 }
 
-func (c *gcontext) httpGetFunc(url goja.Value, args ...goja.Value) goja.Value {
-	return c.httpFunc("GET", url, args...)
+func (sc *script) httpGetFunc(url goja.Value, args ...goja.Value) goja.Value {
+	return sc.httpFunc("GET", url, args...)
 }
 
-func (c *gcontext) httpPostFunc(url goja.Value, args ...goja.Value) goja.Value {
-	return c.httpFunc("POST", url, args...)
+func (sc *script) httpPostFunc(url goja.Value, args ...goja.Value) goja.Value {
+	return sc.httpFunc("POST", url, args...)
 }

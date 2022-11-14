@@ -162,7 +162,7 @@ func (s1 *Service) apiV1() http.Handler {
 			s.log.Infof("apiV1 time 2: %f", time.Since(start).Seconds())
 		}
 
-		if s.gj.IsProd() && !s.conf.DisableAllowList {
+		if s.gj.IsProd() && !s.conf.DisableOPAPolicies {
 			policy, err := s.gj.GetOpaPolicy(req.Query)
 			if err != nil {
 				renderErr(w, err)
@@ -197,6 +197,11 @@ func (s1 *Service) apiV1() http.Handler {
 		switch {
 		case s.gj.IsProd():
 			rc.APQKey = req.OpName
+			serviceId := r.Header.Get("x-graphql-service-id")
+			rc.ServiceId = ""
+			if serviceId != "" && serviceId != "undefined" {
+				rc.ServiceId = serviceId
+			}
 		case req.apqEnabled():
 			rc.APQKey = (req.OpName + req.Ext.Persisted.Sha256Hash)
 		}

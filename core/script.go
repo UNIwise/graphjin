@@ -18,6 +18,7 @@ import (
 
 type reqFunc func(map[string]interface{}, string, interface{}) map[string]interface{}
 type respFunc func(map[string]interface{}, string, interface{}) map[string]interface{}
+type initScriptFunc func(sc *script) error
 
 func (gj *graphjin) initScripting() error {
 	gj.scripts = sync.Map{}
@@ -25,29 +26,67 @@ func (gj *graphjin) initScripting() error {
 }
 
 func (c *gcontext) loadScript(name string) error {
+	fullName := name
+	if c.rc.ServiceId != "" {
+		fullName = fmt.Sprintf("%s-%s", c.rc.ServiceId, name)
+	}
+
+	if sv, ok := c.gj.scripts.Load(fullName); ok {
+		c.sc = sv.(*script)
+		return nil
+	}
+
+	f := func(sc *script) error {
+		return c.scriptInit(sc, fullName)
+	}
+	var sc *script
 	var err error
 
-	if err := babel.Init(5); err != nil {
+	if sc, err = c.gj.loadScriptWithFunc(fullName, f); err != nil {
 		return err
 	}
 
-	sv, _ := c.gj.scripts.LoadOrStore(name, &script{})
-	c.sc = sv.(*script)
+	c.sc = sc
 
-	c.sc.Do(func() {
-		err = c.scriptInit(c.sc, name)
-	})
+	return nil
+}
 
-	if err != nil {
-		c.sc.Reset()
-		return err
+func (gj *graphjin) loadScriptFromString(name string, serviceId string, content string) error {
+	fullName := fmt.Sprintf("%s-%s", serviceId, name)
+	f := func(sc *script) error {
+		return gj.scriptInitFromString(sc, fullName, content)
 	}
-
-	if !c.gj.conf.Production {
-		c.sc.Reset()
+	var err error
+	if _, err = gj.loadScriptWithFunc(fullName, f); err != nil {
+		return err
 	}
 
 	return nil
+}
+
+func (gj *graphjin) loadScriptWithFunc(name string, f initScriptFunc) (*script, error) {
+	var err error
+	if err := babel.Init(5); err != nil {
+		return nil, err
+	}
+
+	sv, _ := gj.scripts.LoadOrStore(name, &script{})
+	sc := sv.(*script)
+
+	sc.Do(func() {
+		err = f(sc)
+	})
+
+	if err != nil {
+		sc.Reset()
+		return nil, err
+	}
+
+	if !gj.conf.Production {
+		sc.Reset()
+	}
+
+	return sc, nil
 }
 
 func (c *gcontext) scriptCallReq(vars map[string]interface{}, role string) (
@@ -146,7 +185,11 @@ func (c *gcontext) scriptInit(s *script, name string) error {
 		return err
 	}
 
-	ast, err := goja.Compile(name, es5Code.String(), true)
+	return c.gj.scriptInitFromString(s, name, es5Code.String())
+}
+
+func (gj *graphjin) scriptInitFromString(s *script, name string, content string) error {
+	ast, err := goja.Compile(name, content, true)
 	if err != nil {
 		return err
 	}
@@ -158,6 +201,7 @@ func (c *gcontext) scriptInit(s *script, name string) error {
 		vm = s.vm
 	} else {
 		vm = goja.New()
+		s.vm = vm
 
 		vm.SetParserOptions(parser.WithDisableSourceMaps)
 
@@ -184,9 +228,9 @@ func (c *gcontext) scriptInit(s *script, name string) error {
 		vm.Set("console", console)  //nolint: errcheck
 
 		http := vm.NewObject()
-		http.Set("get", c.httpGetFunc)   //nolint: errcheck
-		http.Set("post", c.httpPostFunc) //nolint: errcheck
-		http.Set("request", c.httpFunc)  //nolint: errcheck
+		http.Set("get", s.httpGetFunc)   //nolint: errcheck
+		http.Set("post", s.httpPostFunc) //nolint: errcheck
+		http.Set("request", s.httpFunc)  //nolint: errcheck
 		vm.Set("http", http)             //nolint: errcheck
 	}
 
@@ -223,7 +267,6 @@ func (c *gcontext) scriptInit(s *script, name string) error {
 		}
 	}
 
-	s.vm = vm
 	return nil
 }
 

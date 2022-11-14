@@ -86,28 +86,29 @@ const (
 // GraphJin struct is an instance of the GraphJin engine it holds all the required information like
 // datase schemas, relationships, etc that the GraphQL to SQL compiler would need to do it's job.
 type graphjin struct {
-	conf        *Config
-	db          *sql.DB
-	log         *_log.Logger
-	fs          afero.Fs
-	dbtype      string
-	dbinfo      *sdata.DBInfo
-	schema      *sdata.DBSchema
-	allowList   *allow.List
-	encKey      [32]byte
-	apq         apqCache
-	queries     map[string]*queryComp
-	roles       map[string]*Role
-	roleStmt    string
-	roleStmtMD  psql.Metadata
-	rmap        map[string]resItem
-	abacEnabled bool
-	qc          *qcode.Compiler
-	pc          *psql.Compiler
-	ge          *graphql.Engine
-	subs        sync.Map
-	scripts     sync.Map
-	prod        bool
+	conf           *Config
+	db             *sql.DB
+	log            *_log.Logger
+	fs             afero.Fs
+	dbtype         string
+	dbinfo         *sdata.DBInfo
+	schema         *sdata.DBSchema
+	allowList      *allow.List
+	encKey         [32]byte
+	apq            apqCache
+	queries        map[string]*queryComp
+	roles          map[string]*Role
+	roleStmt       string
+	roleStmtMD     psql.Metadata
+	rmap           map[string]resItem
+	abacEnabled    bool
+	qc             *qcode.Compiler
+	pc             *psql.Compiler
+	ge             *graphql.Engine
+	subs           sync.Map
+	scripts        sync.Map
+	prod           bool
+	externalConfig *ExternalConfig
 }
 
 type GraphJin struct {
@@ -119,14 +120,15 @@ type script struct {
 	RespFunc respFunc
 	vm       *goja.Runtime
 	util.Once
+	gj *graphjin
 }
 
 type Option func(*graphjin) error
 
 // NewGraphJin creates the GraphJin struct, this involves querying the database to learn its
 // schemas and relationships
-func NewGraphJin(conf *Config, db *sql.DB, options ...Option) (*GraphJin, error) {
-	gj, err := newGraphJin(conf, db, nil, options...)
+func NewGraphJin(conf *Config, db *sql.DB, dbConf *DBConfig, options ...Option) (*GraphJin, error) {
+	gj, err := newGraphJin(conf, db, nil, dbConf, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +148,7 @@ func NewGraphJin(conf *Config, db *sql.DB, options ...Option) (*GraphJin, error)
 }
 
 // newGraphJin helps with writing tests and benchmarks
-func newGraphJin(conf *Config, db *sql.DB, dbinfo *sdata.DBInfo, options ...Option) (*graphjin, error) {
+func newGraphJin(conf *Config, db *sql.DB, dbinfo *sdata.DBInfo, dbConf *DBConfig, options ...Option) (*graphjin, error) {
 	if conf == nil {
 		conf = &Config{Debug: true, DisableAllowList: true}
 	}
@@ -210,6 +212,14 @@ func newGraphJin(conf *Config, db *sql.DB, dbinfo *sdata.DBInfo, options ...Opti
 		return nil, err
 	}
 
+	if err := gj.initExternalConfig(dbConf); err != nil {
+		return nil, err
+	}
+
+	if err := gj.externalConfig.Load(); err != nil {
+		return nil, err
+	}
+
 	if conf.SecretKey != "" {
 		sk := sha256.Sum256([]byte(conf.SecretKey))
 		conf.SecretKey = ""
@@ -247,8 +257,9 @@ type Result struct {
 
 // ReqConfig is used to pass request specific config values to the GraphQLEx and SubscribeEx functions. Dynamic variables can be set here.
 type ReqConfig struct {
-	APQKey string
-	Vars   map[string]interface{}
+	APQKey    string
+	ServiceId string
+	Vars      map[string]interface{}
 }
 
 // GraphQL function is called on the GraphJin struct to convert the provided GraphQL query into an
@@ -353,7 +364,8 @@ func (g *GraphJin) GraphQL(
 // Reload does database discover and reinitializes GraphJin.
 func (g *GraphJin) Reload() error {
 	gj := g.Load().(*graphjin)
-	gjNew, err := newGraphJin(gj.conf, gj.db, nil)
+
+	gjNew, err := newGraphJin(gj.conf, gj.db, nil, gj.externalConfig.dbConfig)
 	if err == nil {
 		g.Store(gjNew)
 	}
@@ -364,6 +376,11 @@ func (g *GraphJin) Reload() error {
 func (g *GraphJin) IsProd() bool {
 	gj := g.Load().(*graphjin)
 	return gj.prod
+}
+
+func (g *GraphJin) GetExternalConfig() *ExternalConfig {
+	gj := g.Load().(*graphjin)
+	return gj.externalConfig
 }
 
 func (g *GraphJin) GetOpaPolicy(query string) (string, error) {
