@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/dosco/graphjin/core/internal/allow"
 	"regexp"
 	"strings"
 	"sync"
@@ -15,8 +16,9 @@ import (
 
 type queryComp struct {
 	sync.Once
-	qr queryReq
-	st stmt
+	qr   queryReq
+	item allow.Item
+	st   stmt
 }
 
 type stmt struct {
@@ -27,7 +29,7 @@ type stmt struct {
 	sql  string
 }
 
-var trimPattern = regexp.MustCompile(`\t|\n|\r|\s|,`)
+var trimPattern = regexp.MustCompile(`[^a-zA-Z0-9]+`)
 
 func trimQuery(query string) string {
 	return trimPattern.ReplaceAllString(query, "")
@@ -58,14 +60,34 @@ func (gj *graphjin) compileQuery(qr queryReq, role string) (*queryComp, error) {
 	// In production mode enforce the allow list and
 	// compile and cache the result else compile each time
 	if qc, ok = gj.queries[(qr.name + role)]; !ok {
+		gj.log.Printf("Compiled Query not found")
+		return nil, errNotFound
+	}
+	incomingQuery := string(qr.query)
+	i, err := ParseItem(incomingQuery)
+	if err != nil {
+		gj.log.Printf("Failed to parse incoming query: \n%s\n", incomingQuery)
+		return nil, err
+	}
+	q1 := trimQuery(i.Query)
+	q2 := trimQuery(qc.item.Query)
+	if strings.Compare(q1, q2) != 0 {
+		gj.log.Printf("Compiled Query Error: Query found, but does not match incoming: \nStored:\n%s\n Incoming: \n%s\n", i.Query, string(qc.item.Query))
 		return nil, errNotFound
 	}
 
-	storedQuery := trimQuery(string(qc.qr.query))
-	incomingQuery := trimQuery(string(qr.query))
-	res := strings.Compare(storedQuery, incomingQuery)
-	if res != 0 {
+	if len(i.Frags) != len(qc.item.Frags) {
+		gj.log.Printf("Compiled Query Error: Query found, number of fragments does not match")
 		return nil, errNotFound
+	}
+
+	for _, frag1 := range i.Frags {
+		for _, frag2 := range qc.item.Frags {
+			if strings.Compare(frag1.Name, frag2.Name) != strings.Compare(frag1.Value, frag2.Value) {
+				gj.log.Printf("Compiled Query Error: Query found, fragments does not match")
+				return nil, errNotFound
+			}
+		}
 	}
 
 	ov := qc.qr.order[0]

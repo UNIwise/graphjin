@@ -158,9 +158,11 @@ func (gj *graphjin) fragmentFetcher() func(name string) (string, error) {
 			return frag, nil
 		}
 
-		frag, err = gj.externalConfig.LoadFragment(name)
-		if err != nil {
-			return "", err
+		if !gj.conf.DisableAllowList {
+			frag, err = gj.externalConfig.LoadFragment(name)
+			if err != nil {
+				return "", err
+			}
 		}
 
 		return frag, err
@@ -303,7 +305,7 @@ func (c *gcontext) resolveSQL(qr queryReq, role string) (queryResp, error) {
 	qcomp, err = c.gj.compileQuery(qr, res.role)
 	if err != nil {
 		// Try loading the latest queries from the external config
-		if errors.Is(err, errNotFound) {
+		if !c.gj.conf.DisableAllowList && errors.Is(err, errNotFound) {
 			err := c.gj.externalConfig.Load()
 			if err != nil {
 				c.gj.log.Printf("failed to fetch updates from external config")

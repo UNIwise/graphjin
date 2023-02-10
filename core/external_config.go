@@ -10,7 +10,9 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"strconv"
+	"strings"
 	"sync/atomic"
+	"text/scanner"
 	"time"
 )
 
@@ -91,6 +93,8 @@ func (ec *ExternalConfig) getDBConnection() (*gorm.DB, error) {
 	return db, nil
 }
 
+var fragments map[string]string
+
 func (ec *ExternalConfig) Load() error {
 	now := time.Now().Unix()
 	diff := now - atomic.LoadInt64(&ec.lastUpdated)
@@ -122,6 +126,7 @@ func (ec *ExternalConfig) Load() error {
 	if err := db.Find(&queries).Error; err != nil {
 		return err
 	}
+	fragments = make(map[string]string)
 	for _, q := range queries {
 		if q.Query == "" {
 			continue
@@ -135,15 +140,28 @@ func (ec *ExternalConfig) Load() error {
 			Vars:     q.Vars,
 			Metadata: allow.Metadata{},
 		}
+		i, err := ParseItem(q.Query)
+		if err != nil {
+			gj.log.Printf("External Config: Failed parse query. Error: %s", err)
+			continue
+		}
+
+		for _, frag := range i.Frags {
+			fragments[frag.Name] = frag.Value
+		}
+
 		qk := gj.getQueryKeys(item)
 
 		for _, v := range qk {
-			qc := &queryComp{qr: queryReq{
-				op:    qt,
-				name:  item.Name,
-				query: []byte(item.Query),
-				vars:  []byte(item.Vars),
-			}}
+			qc := &queryComp{
+				qr: queryReq{
+					op:    qt,
+					name:  item.Name,
+					query: []byte(item.Query),
+					vars:  []byte(item.Vars),
+				},
+				item: i,
+			}
 
 			if item.Metadata.Order.Var != "" {
 				qc.qr.order = [2]string{item.Metadata.Order.Var, strconv.Quote(v.val)}
@@ -158,7 +176,107 @@ func (ec *ExternalConfig) Load() error {
 	return nil
 }
 
+const (
+	expComment = iota + 1
+	expVar
+	expQuery
+	expFrag
+)
+
+func setValue(st int, v string, item allow.Item) (allow.Item, error) {
+	val := func() string {
+		return strings.TrimSpace(v[:strings.LastIndexByte(v, '}')+1])
+	}
+	switch st {
+	case expComment:
+		item.Comment = val()
+
+	case expVar:
+		item.Vars = val()
+
+	case expQuery:
+		item.Query = val()
+
+	case expFrag:
+		f := allow.Frag{Value: val()}
+		f.Name = allow.QueryName(f.Value)
+		item.Frags = append(item.Frags, f)
+	}
+
+	return item, nil
+}
+
+func isGraphQL(s string) bool {
+	return strings.HasPrefix(s, "query") ||
+		strings.HasPrefix(s, "mutation") ||
+		strings.HasPrefix(s, "subscription")
+}
+
+func ParseItem(b string) (allow.Item, error) {
+	var s scanner.Scanner
+	s.Init(strings.NewReader(b))
+	s.Mode ^= scanner.SkipComments
+
+	var op, sp scanner.Position
+	var item allow.Item
+	var err error
+
+	st := expComment
+
+	for tok := s.Scan(); tok != scanner.EOF; tok = s.Scan() {
+		txt := s.TokenText()
+
+		switch {
+		case strings.HasPrefix(txt, "/*"):
+			v := b[sp.Offset:s.Pos().Offset]
+			item, err = setValue(st, v, item)
+			sp = s.Pos()
+
+		case strings.HasPrefix(txt, "variables"):
+			v := b[sp.Offset:s.Pos().Offset]
+			item, err = setValue(st, v, item)
+			sp = s.Pos()
+			st = expVar
+
+		case isGraphQL(txt):
+			v := b[sp.Offset:s.Pos().Offset]
+			item, err = setValue(st, v, item)
+			sp = op
+			st = expQuery
+
+		case strings.HasPrefix(txt, "fragment"):
+			v := b[sp.Offset:s.Pos().Offset]
+			item, err = setValue(st, v, item)
+			sp = op
+			st = expFrag
+		}
+
+		if err != nil {
+			return item, err
+		}
+
+		op = s.Pos()
+	}
+
+	if st == expQuery || st == expFrag {
+		v := b[sp.Offset:s.Pos().Offset]
+		item, err = setValue(st, v, item)
+	}
+
+	if err != nil {
+		return item, err
+	}
+
+	item.Name = allow.QueryName(item.Query)
+	item.Key = strings.ToLower(item.Name)
+	return item, nil
+}
+
 func (ec *ExternalConfig) LoadFragment(name string) (string, error) {
+	if frag, ok := fragments[name]; ok {
+		return frag, nil
+	}
+
 	db := ec.dbConnection
 	var fragment GJFragment
 	err := db.Order("created_at DESC").First(&fragment, "name = ?", name).Error

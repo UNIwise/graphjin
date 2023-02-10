@@ -34,11 +34,11 @@ const (
 type Item struct {
 	Name     string
 	Comment  string `yaml:",omitempty"`
-	key      string
+	Key      string
 	Query    string
 	Vars     string   `yaml:",omitempty"`
 	Metadata Metadata `yaml:",inline,omitempty"`
-	frags    []Frag
+	Frags    []Frag
 }
 
 type Metadata struct {
@@ -226,7 +226,7 @@ func parseQuery(b string) (Item, error) {
 	}
 
 	item.Name = QueryName(item.Query)
-	item.key = strings.ToLower(item.Name)
+	item.Key = strings.ToLower(item.Name)
 	return item, nil
 }
 
@@ -247,7 +247,7 @@ func setValue(st int, v string, item Item) (Item, error) {
 	case expFrag:
 		f := Frag{Value: val()}
 		f.Name = QueryName(f.Value)
-		item.frags = append(item.frags, f)
+		item.Frags = append(item.Frags, f)
 	}
 
 	return item, nil
@@ -267,7 +267,7 @@ func (al *List) save(item Item) error {
 	buf.Reset()
 
 	item.Name = QueryName(query)
-	item.key = strings.ToLower(item.Name)
+	item.Key = strings.ToLower(item.Name)
 
 	if item.Name == "" {
 		return nil
@@ -307,7 +307,7 @@ func (al *List) saveItem(item Item, ow bool) error {
 		return err
 	}
 
-	for _, fv := range item.frags {
+	for _, fv := range item.Frags {
 		fn := path.Join(fragmentPath, fv.Name)
 		b := []byte(fv.Value)
 

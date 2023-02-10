@@ -212,12 +212,14 @@ func newGraphJin(conf *Config, db *sql.DB, dbinfo *sdata.DBInfo, dbConf *DBConfi
 		return nil, err
 	}
 
-	if err := gj.initExternalConfig(dbConf); err != nil {
-		return nil, err
-	}
+	if gj.queries != nil {
+		if err := gj.initExternalConfig(dbConf); err != nil {
+			return nil, err
+		}
 
-	if err := gj.externalConfig.Load(); err != nil {
-		return nil, err
+		if err := gj.externalConfig.Load(); err != nil {
+			return nil, err
+		}
 	}
 
 	if conf.SecretKey != "" {
@@ -364,8 +366,12 @@ func (g *GraphJin) GraphQL(
 // Reload does database discover and reinitializes GraphJin.
 func (g *GraphJin) Reload() error {
 	gj := g.Load().(*graphjin)
+	var dbc *DBConfig
+	if gj.externalConfig != nil {
+		dbc = gj.externalConfig.dbConfig
+	}
 
-	gjNew, err := newGraphJin(gj.conf, gj.db, nil, gj.externalConfig.dbConfig)
+	gjNew, err := newGraphJin(gj.conf, gj.db, nil, dbc)
 	if err == nil {
 		g.Store(gjNew)
 	}

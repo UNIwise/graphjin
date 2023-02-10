@@ -455,6 +455,10 @@ func (co *Compiler) compileQuery(qc *QCode, op *graph.Operation, role string) er
 			if sel.Where.Exp != nil {
 				expressions := getExpressions(*sel.Where.Exp)
 				for _, exp := range expressions {
+					if exp.Op != OpEquals {
+						continue
+					}
+
 					col := exp.Left.Col
 					cols[col.Name] = col
 				}
