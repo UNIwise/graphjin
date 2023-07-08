@@ -13,8 +13,13 @@ type HasAccessRequest struct {
 	IPAddress string      `json:"ipAddress"`
 }
 
+type ResponseResult struct {
+	Result bool     `json:"result"`
+	Errors []string `json:"errors"`
+}
+
 type HasAccessResponse struct {
-	Result bool `json:"result"`
+	Result ResponseResult `json:"result"`
 }
 
 func NewOPAClient(config *Config) *OpaClientImpl {
@@ -55,5 +60,9 @@ func (s *OpaClientImpl) HasAccess(policy string, jwt string, ipAddress string, a
 		return false, fmt.Errorf("failed to get response from authorization service: %d", resp.StatusCode())
 	}
 
-	return res.Result, nil
+	if len(res.Result.Errors) > 0 {
+		return false, fmt.Errorf("failed to get response from authorization service: %s", strings.Join(res.Result.Errors, ", "))
+	}
+
+	return res.Result.Result, nil
 }
