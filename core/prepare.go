@@ -12,11 +12,12 @@ import (
 )
 
 type queryReq struct {
-	op    qcode.QType
-	name  string
-	query []byte
-	vars  []byte
-	order [2]string
+	op      qcode.QType
+	name    string
+	service string
+	query   []byte
+	vars    []byte
+	order   [2]string
 }
 
 // nolint: errcheck
@@ -92,10 +93,11 @@ func (gj *graphjin) initAllowList() error {
 
 		for _, v := range qk {
 			qc := &queryComp{qr: queryReq{
-				op:    qt,
-				name:  item.Name,
-				query: []byte(item.Query),
-				vars:  []byte(item.Vars),
+				op:      qt,
+				name:    item.Name,
+				service: "default",
+				query:   []byte(item.Query),
+				vars:    []byte(item.Vars),
 			}}
 
 			if item.Metadata.Order.Var != "" {
@@ -120,10 +122,10 @@ func (gj *graphjin) getQueryKeys(item allow.Item) []queryKey {
 	var qk []queryKey
 
 	for roleName := range gj.roles {
-		qk = append(qk, queryKey{key: (item.Name + roleName)})
+		qk = append(qk, queryKey{key: (item.Service + item.Name + roleName)})
 
 		for _, v := range item.Metadata.Order.Values {
-			qk = append(qk, queryKey{key: (item.Name + roleName + v), val: v})
+			qk = append(qk, queryKey{key: (item.Service + item.Name + roleName + v), val: v})
 		}
 	}
 	return qk

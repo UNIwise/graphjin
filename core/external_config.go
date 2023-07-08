@@ -136,6 +136,7 @@ func (ec *ExternalConfig) Load() error {
 		item := allow.Item{
 			Name:     q.Name,
 			Comment:  "",
+			Service:  q.Service,
 			Query:    q.Query,
 			Vars:     q.Vars,
 			Metadata: allow.Metadata{},
@@ -155,10 +156,11 @@ func (ec *ExternalConfig) Load() error {
 		for _, v := range qk {
 			qc := &queryComp{
 				qr: queryReq{
-					op:    qt,
-					name:  item.Name,
-					query: []byte(item.Query),
-					vars:  []byte(item.Vars),
+					op:      qt,
+					name:    item.Name,
+					service: item.Service,
+					query:   []byte(item.Query),
+					vars:    []byte(item.Vars),
 				},
 				item: i,
 			}

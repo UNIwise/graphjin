@@ -33,6 +33,7 @@ const (
 
 type Item struct {
 	Name     string
+	Service  string
 	Comment  string `yaml:",omitempty"`
 	Key      string
 	Query    string

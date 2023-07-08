@@ -339,10 +339,11 @@ func (g *GraphJin) GraphQL(
 	}
 
 	qreq := queryReq{
-		op:    ct.op,
-		name:  ct.name,
-		query: []byte(query),
-		vars:  vars,
+		op:      ct.op,
+		name:    ct.name,
+		query:   []byte(query),
+		service: ct.rc.ServiceId,
+		vars:    vars,
 	}
 	qres, err := ct.execQuery(qreq, role)
 

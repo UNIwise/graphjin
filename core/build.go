@@ -59,7 +59,7 @@ func (gj *graphjin) compileQuery(qr queryReq, role string) (*queryComp, error) {
 
 	// In production mode enforce the allow list and
 	// compile and cache the result else compile each time
-	if qc, ok = gj.queries[(qr.name + role)]; !ok {
+	if qc, ok = gj.queries[(qr.service + qr.name + role)]; !ok {
 		gj.log.Printf("Compiled Query not found")
 		return nil, errNotFound
 	}
@@ -126,7 +126,7 @@ func (gj *graphjin) orderQuery(
 	}
 	oval = string(v[1:(len(v) - 1)])
 
-	if qc, ok := gj.queries[(qc.qr.name + role + oval)]; ok {
+	if qc, ok := gj.queries[(qc.qr.service + qc.qr.name + role + oval)]; ok {
 		return qc, nil
 	} else {
 		return nil, fmt.Errorf("invalid value for variable (%s): %s", ov, oval)
