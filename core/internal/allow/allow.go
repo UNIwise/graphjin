@@ -5,341 +5,402 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
-	"os"
-	"path"
+	_log "log"
 	"path/filepath"
+	"regexp"
 	"strings"
-	"text/scanner"
 
-	"gopkg.in/yaml.v3"
+	"github.com/dosco/graphjin/core/v3/internal/graph"
+	lru "github.com/hashicorp/golang-lru/v2"
+)
 
-	"github.com/chirino/graphql/schema"
-	"github.com/dosco/graphjin/internal/jsn"
-	"github.com/spf13/afero"
+type FS interface {
+	Get(path string) (data []byte, err error)
+	Put(path string, data []byte) (err error)
+	Exists(path string) (exists bool, err error)
+	List(path string) (entries []string, err error)
+}
+
+var (
+	ErrUnknownGraphQLQuery = errors.New("unknown graphql query")
+	ErrInvalidLookupName   = errors.New("invalid query or fragment name")
+
+	lookupSegmentRe = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 )
 
 const (
-	expComment = iota + 1
-	expVar
-	expQuery
-	expFrag
-)
-
-const (
-	queryPath    = "/queries"
-	fragmentPath = "/fragments"
+	QUERY_PATH = "/queries"
 )
 
 type Item struct {
-	Name     string
-	Comment  string `yaml:",omitempty"`
-	key      string
-	Query    string
-	Vars     string   `yaml:",omitempty"`
-	Metadata Metadata `yaml:",inline,omitempty"`
-	frags    []Frag
+	Namespace  string
+	Operation  string
+	Name       string
+	ActionJSON map[string]json.RawMessage
+	Query      []byte
+	Fragments  []Fragment
 }
 
-type Metadata struct {
-	Order struct {
-		Var    string   `yaml:"var,omitempty"`
-		Values []string `yaml:"values,omitempty"`
-	} `yaml:",omitempty"`
-}
-
-type Frag struct {
+type Fragment struct {
 	Name  string
-	Value string
+	Value []byte
+}
+
+type saveReq struct {
+	item Item
+	done chan error
 }
 
 type List struct {
-	saveChan chan Item
-	fs       afero.Fs
+	cache    *lru.TwoQueueCache[string, Item]
+	saveChan chan saveReq
+	fs       FS
 }
 
-type Config struct {
-	Log *log.Logger
-}
-
-func New(conf Config, fs afero.Fs) (*List, error) {
-	var err error
-
+// New creates a new allow list
+func New(log *_log.Logger, fs FS, readOnly bool) (al *List, err error) {
 	if fs == nil {
 		return nil, fmt.Errorf("no filesystem defined for the allow list")
 	}
+	al = &List{fs: fs}
 
-	al := List{saveChan: make(chan Item), fs: fs}
+	al.cache, err = lru.New2Q[string, Item](1000)
+	if err != nil {
+		return
+	}
 
-	_ = fs.MkdirAll(queryPath, os.ModePerm)
-	_ = fs.MkdirAll(fragmentPath, os.ModePerm)
+	if readOnly {
+		return
+	}
+	al.saveChan = make(chan saveReq)
 
 	go func() {
-		for v := range al.saveChan {
-			err := al.save(v)
-
-			if err != nil && conf.Log != nil {
-				conf.Log.Println("WRN allow list save:", err)
+		for req := range al.saveChan {
+			saveErr := al.save(req.item)
+			if saveErr != nil && log != nil {
+				log.Println("WRN allow list:", saveErr)
 			}
+			req.done <- saveErr
+			close(req.done)
 		}
 	}()
 
-	if err != nil {
-		return nil, err
-	}
-
-	return &al, nil
+	return al, err
 }
 
-func (al *List) Set(vars []byte, query string, md Metadata) error {
+// Set adds a new query to the allow list
+func (al *List) Set(item Item) error {
 	if al.saveChan == nil {
 		return errors.New("allow list is read-only")
 	}
 
-	if query == "" {
+	if len(item.Query) == 0 {
 		return errors.New("empty query")
 	}
 
-	item, err := parseQuery(query)
-	if err != nil {
-		return err
+	req := saveReq{
+		item: item,
+		done: make(chan error, 1),
 	}
 
-	item.Vars = string(vars)
-	item.Metadata = md
-	al.saveChan <- item
-	return nil
+	al.saveChan <- req
+	err := <-req.done
+	if err == nil {
+		al.cache.Purge()
+	}
+	return err
 }
 
-func (al *List) Load() ([]Item, error) {
-	var items []Item
-
-	files, err := afero.ReadDir(al.fs, queryPath)
+// GetByName returns a query by name
+func (al *List) GetByName(name string, useCache bool) (item Item, err error) {
+	name, err = validateLookupName(name)
 	if err != nil {
-		return nil, fmt.Errorf("allow list: %w", err)
+		return item, err
 	}
 
-	for _, f := range files {
-		var item Item
-		//var mi bool
+	if useCache {
+		if v, ok := al.cache.Get(name); ok {
+			item = v
+			return
+		}
+	}
 
-		fn := f.Name()
-		fn = strings.TrimSuffix(fn, filepath.Ext(fn))
+	fp := filepath.Join(QUERY_PATH, name)
+	var ok bool
 
-		// migrate if old file exists
-		/*
-			oldFile := path.Join(queryPath, fn)
-			if _, err := os.Stat(oldFile); !os.IsNotExist(err) {
-				b, err := afero.ReadFile(al.fs, oldFile)
-				if err != nil {
-					return nil, err
-				}
+	if ok, err = al.fs.Exists((fp + ".gql")); err != nil {
+		return
+	} else if ok {
+		item, err = al.get(QUERY_PATH, name, ".gql", useCache)
+		return
+	}
 
-				item, err = parseQuery(string(b))
-				if err != nil {
-					return nil, err
-				}
-				mi = true
-			}
-		*/
+	if ok, err = al.fs.Exists((fp + ".graphql")); err != nil {
+		return
+	} else if ok {
+		item, err = al.get(QUERY_PATH, name, ".graphql", useCache)
+	} else {
+		err = ErrUnknownGraphQLQuery
+	}
+	return
+}
 
-		newFile := path.Join(queryPath, (fn + ".yaml"))
-		/*if mi {
-			b, err := yaml.Marshal(&item)
-			if err != nil {
-				return nil, err
-			}
-			if err := afero.WriteFile(al.fs, newFile, b, 0600); err != nil {
-				return nil, err
-			}
+// get returns a query by name
+func (al *List) get(queryPath, name, ext string, useCache bool) (item Item, err error) {
+	queryNS, queryName := splitName(name)
 
+	var query []byte
+	query, err = readGQL(al.fs, filepath.Join(queryPath, (name+ext)))
+	if err != nil {
+		return
+	}
+
+	var h graph.FPInfo
+	h, err = graph.FastParseBytes(query)
+	if err != nil {
+		return
+	}
+
+	var vars []byte
+
+	jsonFile := filepath.Join(queryPath, (name + ".json"))
+	ok, err := al.fs.Exists(jsonFile)
+	if ok {
+		vars, err = al.fs.Get(jsonFile)
+	}
+	if err != nil {
+		return
+	}
+
+	item.Namespace = queryNS
+	item.Operation = h.Operation
+	item.Name = queryName
+	item.Query = query
+
+	if len(vars) != 0 {
+		if err = json.Unmarshal(vars, &item.ActionJSON); err != nil {
+			return
+		}
+	}
+
+	if useCache {
+		al.cache.Add(name, item)
+	}
+	return
+}
+
+// save saves a query to the allow list
+func (al *List) save(item Item) (err error) {
+	item.Name = strings.TrimSpace(item.Name)
+	if item.Name == "" {
+		err = errors.New("no query name defined: only named queries are saved to the allow list")
+		return
+	}
+	return al.saveItem(item)
+}
+
+// saveItem saves a query to the allow list
+func (al *List) saveItem(item Item) (err error) {
+	var queryFile string
+	if item.Namespace != "" {
+		queryFile = item.Namespace + "." + item.Name
+	} else {
+		queryFile = item.Name
+	}
+
+	fmap := make(map[string]struct{}, len(item.Fragments))
+	var buf bytes.Buffer
+
+	for _, f := range item.Fragments {
+		var fragFile string
+		if item.Namespace != "" {
+			fragFile = item.Namespace + "." + f.Name
 		} else {
-		*/
-		b, err := afero.ReadFile(al.fs, newFile)
+			fragFile = f.Name
+		}
+
+		if _, ok := fmap[fragFile]; !ok {
+			fh := fmt.Sprintf(`#import "./fragments/%s"`, fragFile)
+			buf.WriteString(fh)
+			buf.WriteRune('\n')
+			fmap[fragFile] = struct{}{}
+		}
+
+		ff := filepath.Join(QUERY_PATH, "fragments", (fragFile + ".gql"))
+		err = al.fs.Put(ff, []byte(f.Value))
+		if err != nil {
+			return
+		}
+	}
+	if buf.Len() != 0 {
+		buf.WriteRune('\n')
+	}
+	buf.Write(bytes.TrimSpace(item.Query))
+
+	qf := filepath.Join(QUERY_PATH, (queryFile + ".gql"))
+	err = al.fs.Put(qf, bytes.TrimSpace(buf.Bytes()))
+	if err != nil {
+		return
+	}
+
+	jf := filepath.Join(QUERY_PATH, (queryFile + ".json"))
+	if len(item.ActionJSON) == 0 {
+		// A replacement without variable metadata must not reload the old
+		// sidecar. FS has no delete operation, so clear it without creating
+		// a sidecar for queries that never had one.
+		exists, err := al.fs.Exists(jf)
+		if err != nil {
+			return err
+		}
+		if exists {
+			return al.fs.Put(jf, []byte("{}"))
+		}
+		return nil
+	}
+	if len(item.ActionJSON) != 0 {
+		var vars []byte
+		vars, err = json.MarshalIndent(item.ActionJSON, "", "  ")
+		if err != nil {
+			return
+		}
+		err = al.fs.Put(jf, vars)
+	}
+	return
+}
+
+// splitName splits a name into namespace and name
+func splitName(name string) (string, string) {
+	i := strings.LastIndex(name, ".")
+	if i == -1 {
+		return "", name
+	} else if i < len(name)-1 {
+		return name[:i], name[(i + 1):]
+	}
+	return "", ""
+}
+
+func validateLookupName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", ErrInvalidLookupName
+	}
+
+	if strings.ContainsAny(name, `/\`) {
+		return "", fmt.Errorf("%w: %q", ErrInvalidLookupName, name)
+	}
+
+	parts := strings.Split(name, ".")
+	for _, part := range parts {
+		if part == "" || !lookupSegmentRe.MatchString(part) {
+			return "", fmt.Errorf("%w: %q", ErrInvalidLookupName, name)
+		}
+	}
+
+	return name, nil
+}
+
+// ListFragments returns all fragments from the fragments directory
+func (al *List) ListFragments() ([]Fragment, error) {
+	fragPath := filepath.Join(QUERY_PATH, "fragments")
+	files, err := al.fs.List(fragPath)
+	if err != nil {
+		// Return empty list if fragments directory doesn't exist
+		return []Fragment{}, nil
+	}
+
+	fragments := make([]Fragment, 0, len(files))
+	for _, file := range files {
+		// Only process .gql and .graphql files
+		if !strings.HasSuffix(file, ".gql") && !strings.HasSuffix(file, ".graphql") {
+			continue
+		}
+
+		// Extract fragment name (remove extension)
+		var name string
+		if strings.HasSuffix(file, ".gql") {
+			name = strings.TrimSuffix(file, ".gql")
+		} else {
+			name = strings.TrimSuffix(file, ".graphql")
+		}
+
+		// Read fragment content
+		fp := filepath.Join(fragPath, file)
+		value, err := al.fs.Get(fp)
+		if err != nil {
+			continue
+		}
+
+		fragments = append(fragments, Fragment{
+			Name:  name,
+			Value: value,
+		})
+	}
+
+	return fragments, nil
+}
+
+// GetFragment returns a specific fragment by name
+func (al *List) GetFragment(name string) (*Fragment, error) {
+	name, err := validateLookupName(name)
+	if err != nil {
+		return nil, err
+	}
+
+	fragPath := filepath.Join(QUERY_PATH, "fragments")
+
+	// Try .gql extension first
+	fp := filepath.Join(fragPath, name+".gql")
+	if ok, _ := al.fs.Exists(fp); ok {
+		value, err := al.fs.Get(fp)
 		if err != nil {
 			return nil, err
 		}
-		if err := yaml.Unmarshal(b, &item); err != nil {
+		return &Fragment{Name: name, Value: value}, nil
+	}
+
+	// Try .graphql extension
+	fp = filepath.Join(fragPath, name+".graphql")
+	if ok, _ := al.fs.Exists(fp); ok {
+		value, err := al.fs.Get(fp)
+		if err != nil {
 			return nil, err
 		}
-		//}
+		return &Fragment{Name: name, Value: value}, nil
+	}
+
+	return nil, fmt.Errorf("fragment not found: %s", name)
+}
+
+// ListAll returns all queries in the allow list
+func (al *List) ListAll() (items []Item, err error) {
+	files, err := al.fs.List(QUERY_PATH)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, file := range files {
+		// Only process .gql and .graphql files
+		if !strings.HasSuffix(file, ".gql") && !strings.HasSuffix(file, ".graphql") {
+			continue
+		}
+
+		// Extract query name (remove extension)
+		var name string
+		if strings.HasSuffix(file, ".gql") {
+			name = strings.TrimSuffix(file, ".gql")
+		} else {
+			name = strings.TrimSuffix(file, ".graphql")
+		}
+
+		// Get the query item
+		item, getErr := al.GetByName(name, false)
+		if getErr != nil {
+			// Log error but continue with other queries
+			continue
+		}
 
 		items = append(items, item)
 	}
 
 	return items, nil
 }
-
-func parseQuery(b string) (Item, error) {
-	var s scanner.Scanner
-	s.Init(strings.NewReader(b))
-	s.Mode ^= scanner.SkipComments
-
-	var op, sp scanner.Position
-	var item Item
-	var err error
-
-	st := expComment
-
-	for tok := s.Scan(); tok != scanner.EOF; tok = s.Scan() {
-		txt := s.TokenText()
-
-		switch {
-		case strings.HasPrefix(txt, "/*"):
-			v := b[sp.Offset:s.Pos().Offset]
-			item, err = setValue(st, v, item)
-			sp = s.Pos()
-
-		case strings.HasPrefix(txt, "variables"):
-			v := b[sp.Offset:s.Pos().Offset]
-			item, err = setValue(st, v, item)
-			sp = s.Pos()
-			st = expVar
-
-		case isGraphQL(txt):
-			v := b[sp.Offset:s.Pos().Offset]
-			item, err = setValue(st, v, item)
-			sp = op
-			st = expQuery
-
-		case strings.HasPrefix(txt, "fragment"):
-			v := b[sp.Offset:s.Pos().Offset]
-			item, err = setValue(st, v, item)
-			sp = op
-			st = expFrag
-		}
-
-		if err != nil {
-			return item, err
-		}
-
-		op = s.Pos()
-	}
-
-	if st == expQuery || st == expFrag {
-		v := b[sp.Offset:s.Pos().Offset]
-		item, err = setValue(st, v, item)
-	}
-
-	if err != nil {
-		return item, err
-	}
-
-	item.Name = QueryName(item.Query)
-	item.key = strings.ToLower(item.Name)
-	return item, nil
-}
-
-func setValue(st int, v string, item Item) (Item, error) {
-	val := func() string {
-		return strings.TrimSpace(v[:strings.LastIndexByte(v, '}')+1])
-	}
-	switch st {
-	case expComment:
-		item.Comment = val()
-
-	case expVar:
-		item.Vars = val()
-
-	case expQuery:
-		item.Query = val()
-
-	case expFrag:
-		f := Frag{Value: val()}
-		f.Name = QueryName(f.Value)
-		item.frags = append(item.frags, f)
-	}
-
-	return item, nil
-}
-
-func (al *List) save(item Item) error {
-	var buf bytes.Buffer
-
-	qd := &schema.QueryDocument{}
-
-	if err := qd.Parse(item.Query); err != nil {
-		return err
-	}
-
-	qd.WriteTo(&buf)
-	query := buf.String()
-	buf.Reset()
-
-	item.Name = QueryName(query)
-	item.key = strings.ToLower(item.Name)
-
-	if item.Name == "" {
-		return nil
-	}
-
-	if err := al.saveItem(item, true); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (al *List) saveItem(item Item, ow bool) error {
-	var err error
-
-	if item.Vars != "" {
-		var buf bytes.Buffer
-
-		if err := jsn.Clear(&buf, []byte(item.Vars)); err != nil {
-			return err
-		}
-
-		vj := json.RawMessage(buf.Bytes())
-		if vj, err = json.MarshalIndent(vj, "", "  "); err != nil {
-			return err
-		}
-		item.Vars = string(vj)
-	}
-
-	b, err := yaml.Marshal(&item)
-	if err != nil {
-		return err
-	}
-
-	fn := path.Join(queryPath, (item.Name + ".yaml"))
-	if err := afero.WriteFile(al.fs, fn, b, 0600); err != nil {
-		return err
-	}
-
-	for _, fv := range item.frags {
-		fn := path.Join(fragmentPath, fv.Name)
-		b := []byte(fv.Value)
-
-		if err := afero.WriteFile(al.fs, fn, b, 0600); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (al *List) FragmentFetcher() func(name string) (string, error) {
-	return func(name string) (string, error) {
-		v, err := afero.ReadFile(al.fs, path.Join(fragmentPath, name))
-		return string(v), err
-	}
-}
-
-// func (al *List) GetQuery(name string) (Item, error) {
-// 	var item Item
-// 	var err error
-
-// 	b, err := ioutil.ReadFile(path.Join(al.queryPath, (name + ".yaml")))
-// 	if err == nil {
-// 		return item, err
-// 	}
-
-// 	return parseYAML(b)
-// }
-
-// func parseYAML(b []byte) (Item, error) {
-// 	var item Item
-// 	err := yaml.Unmarshal(b, &item)
-// 	return item, err
-// }

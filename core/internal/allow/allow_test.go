@@ -1,241 +1,141 @@
 package allow
 
 import (
+	"errors"
+	"fmt"
+	"strings"
 	"testing"
 )
 
-func TestGQLName1(t *testing.T) {
-	var q = `
-	query {
-		products(
-			distinct: [price]
-			where: { id: { and: { greater_or_equals: 20, lt: 28 } } }
-		) { id name } }`
-
-	name := QueryName(q)
-
-	if name != "" {
-		t.Fatal("Name should be empty, not ", name)
-	}
+type testFS struct {
+	files map[string][]byte
 }
 
-func TestGQLName2(t *testing.T) {
-	var q = `
-	query hakuna_matata
-	
-	{
-		products(
-			distinct: [price]
-			where: { id: { and: { greater_or_equals: 20, lt: 28 } } }
-		) {
-			id
-			name
-		}
-	}`
-
-	name := QueryName(q)
-
-	if name != "hakuna_matata" {
-		t.Fatal("Name should be 'hakuna_matata', not ", name)
+func (f *testFS) Get(path string) ([]byte, error) {
+	data, ok := f.files[path]
+	if !ok {
+		return nil, fmt.Errorf("file not found: %s", path)
 	}
+	return append([]byte(nil), data...), nil
 }
 
-func TestGQLName3(t *testing.T) {
-	var q = `
-	mutation means{ users { id } }`
-
-	// var v2 = `   { products( limit: 30, order_by: { price: desc }, distinct: [ price ] where: { id: { and: { greater_or_equals: 20, lt: 28 } } }) { id name price user { id email } } } `
-
-	name := QueryName(q)
-
-	if name != "means" {
-		t.Fatal("Name should be 'means', not ", name)
+func (f *testFS) Put(path string, data []byte) error {
+	if f.files == nil {
+		f.files = make(map[string][]byte)
 	}
+	f.files[path] = append([]byte(nil), data...)
+	return nil
 }
 
-func TestGQLName4(t *testing.T) {
-	var q = `
-	query no_worries 
-		users {
-			id
-		}
-	}`
-
-	name := QueryName(q)
-
-	if name != "no_worries" {
-		t.Fatal("Name should be 'no_worries', not ", name)
-	}
+func (f *testFS) Exists(path string) (bool, error) {
+	_, ok := f.files[path]
+	return ok, nil
 }
 
-func TestGQLName5(t *testing.T) {
-	var q = `
-	    {
-		users {
-			id
-		}
-	}`
-
-	name := QueryName(q)
-
-	if len(name) != 0 {
-		t.Fatal("Name should be empty, not ", name)
-	}
+func (f *testFS) List(path string) ([]string, error) {
+	return nil, nil
 }
 
-func TestParse1(t *testing.T) {
-	var al = `
- # Hello world
-
-	variables {
-		"data": {
-			"slug": "",
-			"body": "",
-			"post": {
-				"connect": {
-					"slug": ""
-				}
-			}
-		}
-	}
-	
-	mutation createComment {
-		comment(insert: $data) {
-			slug
-			body
-			createdAt: created_at
-			totalVotes: cached_votes_total
-			totalReplies: cached_replies_total
-			vote: comment_vote(where: {user_id: {eq: $user_id}}) {
-				created_at
-				__typename
-			}
-			author: user {
-				slug
-				firstName: first_name
-				lastName: last_name
-				pictureURL: picture_url
-				bio
-				__typename
-			}
-			__typename
-		}
-	}
-	
-	# Query named createPost
-	
-	query createPost {
-		post(insert: $data) {
-			slug
-			body
-			published
-			createdAt: created_at
-			totalVotes: cached_votes_total
-			totalComments: cached_comments_total
-			vote: post_vote(where: {user_id: {eq: $user_id}}) {
-				created_at
-				__typename
-			}
-			author: user {
-				slug
-				firstName: first_name
-				lastName: last_name
-				pictureURL: picture_url
-				bio
-				__typename
-			}
-			__typename
-		}
-	}`
-
-	_, err := parseQuery(al)
+func TestGetByNameRejectsTraversalNames(t *testing.T) {
+	al, err := New(nil, &testFS{}, true)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("new allow list: %v", err)
+	}
+
+	names := []string{"../db", `..\db`, "a/../../b", "", "shop..user"}
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			_, err := al.GetByName(name, false)
+			if !errors.Is(err, ErrInvalidLookupName) {
+				t.Fatalf("expected invalid lookup name error, got %v", err)
+			}
+		})
 	}
 }
 
-func TestParse2(t *testing.T) {
-	var al = `
- /* Hello world */
-
-	variables {
-		"data": {
-			"slug": "",
-			"body": "",
-			"post": {
-				"connect": {
-					"slug": ""
-				}
-			}
-		}
-	}
-	
-	mutation createComment {
-		comment(insert: $data) {
-			slug
-			body
-			createdAt: created_at
-			totalVotes: cached_votes_total
-			totalReplies: cached_replies_total
-			vote: comment_vote(where: {user_id: {eq: $user_id}}) {
-				created_at
-				__typename
-			}
-			author: user {
-				slug
-				firstName: first_name
-				lastName: last_name
-				pictureURL: picture_url
-				bio
-				__typename
-			}
-			__typename
-		}
-	}
-	
-	/* 
-	Query named createPost 
-	*/
-	
-	variables {
-		"data": {
-			"thread": {
-				"connect": {
-					"slug": ""
-				}
-			},
-			"slug": "",
-			"published": false,
-			"body": ""
-		}
-	}
-	
-	query createPost {
-		post(insert: $data) {
-			slug
-			body
-			published
-			createdAt: created_at
-			totalVotes: cached_votes_total
-			totalComments: cached_comments_total
-			vote: post_vote(where: {user_id: {eq: $user_id}}) {
-				created_at
-				__typename
-			}
-			author: user {
-				slug
-				firstName: first_name
-				lastName: last_name
-				pictureURL: picture_url
-				bio
-				__typename
-			}
-			__typename
-		}
-	}`
-
-	_, err := parseQuery(al)
+func TestGetFragmentRejectsTraversalNames(t *testing.T) {
+	al, err := New(nil, &testFS{}, true)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("new allow list: %v", err)
+	}
+
+	_, err = al.GetFragment("../x")
+	if !errors.Is(err, ErrInvalidLookupName) {
+		t.Fatalf("expected invalid lookup name error, got %v", err)
+	}
+}
+
+func TestGetByNameAllowsNamespacedQueries(t *testing.T) {
+	fs := &testFS{files: map[string][]byte{
+		"/queries/getProducts.gql":                []byte("query getProducts { products { id } }"),
+		"/queries/shop.user_fields.gql":           []byte("query user_fields { users { id } }"),
+		"/queries/fragments/shop.user_fields.gql": []byte("fragment UserFields on users { id }"),
+	}}
+
+	al, err := New(nil, fs, true)
+	if err != nil {
+		t.Fatalf("new allow list: %v", err)
+	}
+
+	if _, err := al.GetByName("getProducts", false); err != nil {
+		t.Fatalf("expected root query name to load, got %v", err)
+	}
+
+	if _, err := al.GetByName("shop.user_fields", false); err != nil {
+		t.Fatalf("expected namespaced query name to load, got %v", err)
+	}
+
+	if _, err := al.GetFragment("shop.user_fields"); err != nil {
+		t.Fatalf("expected namespaced fragment name to load, got %v", err)
+	}
+}
+
+func TestGetByNameRejectsEscapingImports(t *testing.T) {
+	fs := &testFS{files: map[string][]byte{
+		"/queries/getProducts.gql": []byte(strings.Join([]string{
+			`#import "../secret"`,
+			`query getProducts { products { id } }`,
+		}, "\n")),
+		"/secret.gql": []byte(`fragment Secret on users { id }`),
+	}}
+
+	al, err := New(nil, fs, true)
+	if err != nil {
+		t.Fatalf("new allow list: %v", err)
+	}
+
+	_, err = al.GetByName("getProducts", false)
+	if !errors.Is(err, ErrInvalidImportPath) {
+		t.Fatalf("expected invalid import path error, got %v", err)
+	}
+}
+
+func TestSetPurgesCachedQuery(t *testing.T) {
+	fs := &testFS{files: map[string][]byte{
+		"/queries/getProducts.gql": []byte("query getProducts { products { id } }"),
+	}}
+	al, err := New(nil, fs, false)
+	if err != nil {
+		t.Fatalf("new allow list: %v", err)
+	}
+
+	item, err := al.GetByName("getProducts", true)
+	if err != nil {
+		t.Fatalf("initial get: %v", err)
+	}
+	if !strings.Contains(string(item.Query), "products") {
+		t.Fatalf("unexpected initial query: %s", item.Query)
+	}
+
+	if err := al.Set(Item{Name: "getProducts", Query: []byte("query getProducts { users { id } }")}); err != nil {
+		t.Fatalf("set replacement: %v", err)
+	}
+
+	item, err = al.GetByName("getProducts", true)
+	if err != nil {
+		t.Fatalf("second get: %v", err)
+	}
+	if !strings.Contains(string(item.Query), "users") {
+		t.Fatalf("expected cache purge to expose replacement query, got %s", item.Query)
 	}
 }

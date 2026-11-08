@@ -6,11 +6,11 @@ import (
 )
 
 func (c *Compiler) RenderVar(w *bytes.Buffer, md *Metadata, vv string) {
-	cc := &compilerContext{md: md, w: w, Compiler: c}
+	cc := compilerContext{md: md, w: w, Compiler: c}
 	cc.renderVar(vv)
 }
 
-// nolint: errcheck
+// nolint:errcheck
 func (c *compilerContext) renderVar(vv string) {
 	f, s := -1, 0
 
@@ -47,16 +47,16 @@ func (c *compilerContext) renderVar(vv string) {
 	}
 }
 
-// nolint: errcheck
+// nolint:errcheck
 func (c *compilerContext) renderParam(p Param) {
 	var id int
 	var ok bool
 	md := c.md
 
-	switch c.ct {
-	case "mysql":
+	if !c.dialect.UseNamedParams() {
 		md.params = append(md.params, p)
-	default:
+		id = len(md.params)
+	} else {
 		if id, ok = md.pindex[p.Name]; !ok {
 			md.params = append(md.params, p)
 			id = len(md.params)
@@ -68,18 +68,13 @@ func (c *compilerContext) renderParam(p Param) {
 	}
 
 	if md.poll {
-		_, _ = c.w.WriteString(`_gj_sub.`)
+		c.quoted("_gj_sub")
+		c.w.WriteString(".")
 		c.quoted(p.Name)
 		return
 	}
 
-	switch c.ct {
-	case "mysql":
-		c.w.WriteString(`?`)
-	default:
-		c.w.WriteString(`$`)
-		int32String(c.w, int32(id))
-	}
+	c.w.WriteString(c.dialect.BindVar(id))
 }
 
 func (md Metadata) Params() []Param {

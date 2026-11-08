@@ -1,19 +1,32 @@
 package serv
 
 import (
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
+	"database/sql/driver"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
+	"sync"
 	"time"
 
-	"contrib.go.opencensus.io/integrations/ocsql"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/stdlib"
-	"github.com/spf13/afero"
+	"github.com/dosco/graphjin/core/v3"
+	"github.com/dosco/graphjin/mongodriver"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/snowflakedb/gosnowflake"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.uber.org/zap"
+
+	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/microsoft/go-mssqldb"
+	_ "github.com/sijms/go-ora/v2"
+	_ "modernc.org/sqlite"
 )
 
 const (
@@ -31,67 +44,125 @@ const (
 type dbConf struct {
 	driverName string
 	connString string
+	connector  driver.Connector // for drivers that require sql.OpenDB (e.g. MongoDB)
 }
 
-func NewDB(conf *Config, openDB bool, log *zap.SugaredLogger, fs afero.Fs) (*sql.DB, error) {
+// Config holds the configuration for the service
+func NewDB(conf *Config, openDB bool, log *zap.SugaredLogger, fs core.FS) (*sql.DB, error) {
 	return newDB(conf, openDB, false, log, fs)
 }
 
-func newDB(
-	conf *Config,
-	openDB, useTelemetry bool,
-	log *zap.SugaredLogger,
-	fs afero.Fs) (*sql.DB, error) {
+// detectDBType detects the database type from the connection string and updates conf.DBType
+func detectDBType(conf *Config) {
+	if cs := conf.DB.ConnString; cs != "" {
+		if strings.HasPrefix(cs, "postgres://") || strings.HasPrefix(cs, "postgresql://") || conf.DB.Type == "postgres" {
+			conf.DBType = "postgres"
+		}
+		if strings.HasPrefix(cs, "mysql://") {
+			conf.DBType = "mysql"
+			conf.DB.ConnString = strings.TrimPrefix(cs, "mysql://")
+		}
+		if strings.HasPrefix(cs, "sqlserver://") {
+			conf.DBType = "mssql"
+		}
+		if strings.HasPrefix(cs, "oracle://") {
+			conf.DBType = "oracle"
+		}
+		if strings.HasPrefix(cs, "mongodb://") || strings.HasPrefix(cs, "mongodb+srv://") {
+			conf.DBType = "mongodb"
+		}
+		if strings.HasPrefix(cs, "snowflake://") {
+			conf.DBType = "snowflake"
+		}
+		if strings.HasPrefix(cs, "cassandra://") {
+			conf.DBType = "cassandra"
+		}
+		if strings.HasPrefix(cs, "clickhouse://") {
+			conf.DBType = "clickhouse"
+		}
+	}
+}
 
-	var db *sql.DB
+// initDBDriver initializes the database driver config based on the DB type
+func initDBDriver(conf *Config, openDB, useTelemetry bool, fs core.FS) (*dbConf, error) {
+	// Honor explicit database.type when db_type is unset.
+	if conf.DBType == "" && conf.DB.Type != "" {
+		conf.DBType = strings.ToLower(conf.DB.Type)
+	}
+
+	detectDBType(conf)
+
 	var dc *dbConf
 	var err error
 
-	switch conf.Core.DBType {
-	case "mysql":
-		dc, err = initMysql(conf, openDB, useTelemetry, fs)
-	default:
+	switch conf.DBType {
+	case "", "postgres":
 		dc, err = initPostgres(conf, openDB, useTelemetry, fs)
+	case "mysql", "mariadb":
+		dc, err = initMysql(conf, openDB, useTelemetry, fs)
+	case "mssql":
+		dc, err = initMssql(conf, openDB, useTelemetry, fs)
+	case "sqlite":
+		dc, err = initSqlite(conf, openDB, useTelemetry, fs)
+	case "oracle":
+		dc, err = initOracle(conf, openDB, useTelemetry, fs)
+	case "mongodb":
+		dc, err = initMongo(conf, openDB, useTelemetry, fs)
+	case "snowflake":
+		dc, err = initSnowflake(conf, openDB, useTelemetry, fs)
+	case "cassandra":
+		dc, err = initCassandra(conf, openDB, useTelemetry, fs)
+	case "clickhouse":
+		dc, err = initClickhouse(conf, openDB, useTelemetry, fs)
+	default:
+		return nil, fmt.Errorf("unsupported database type %q: supported types are postgres, mysql, mariadb, mssql, sqlite, oracle, mongodb, snowflake, cassandra, clickhouse", conf.DBType)
 	}
 
 	if err != nil {
 		return nil, fmt.Errorf("database init: %v", err)
 	}
+	return dc, nil
+}
 
-	if useTelemetry && conf.telemetryEnabled() {
-		dc.driverName, err = initTelemetry(conf, dc.driverName)
-		if err != nil {
-			return nil, err
-		}
+// newDB initializes the database with a retry loop
+func newDB(
+	conf *Config,
+	openDB, useTelemetry bool,
+	log *zap.SugaredLogger,
+	fs core.FS,
+) (*sql.DB, error) {
+	var db *sql.DB
+	var err error
 
-		var interval time.Duration
-
-		if conf.Telemetry.Interval != nil {
-			interval = *conf.Telemetry.Interval
-		} else {
-			interval = 5 * time.Second
-		}
-
-		defer ocsql.RecordStats(db, interval)()
-		log.Infof("open-census telemetry enabled")
+	dc, err := initDBDriver(conf, openDB, useTelemetry, fs)
+	if err != nil {
+		return nil, err
 	}
 
 	for i := 0; ; {
-		if db, err = sql.Open(dc.driverName, dc.connString); err == nil {
+		if dc.connector != nil {
+			db = sql.OpenDB(dc.connector)
+			err = nil
+		} else {
+			db, err = sql.Open(dc.driverName, dc.connString)
+		}
+		if err == nil {
 			db.SetMaxIdleConns(conf.DB.PoolSize)
 			db.SetMaxOpenConns(conf.DB.MaxConnections)
 			db.SetConnMaxIdleTime(conf.DB.MaxConnIdleTime)
 			db.SetConnMaxLifetime(conf.DB.MaxConnLifeTime)
 
-			if err := db.Ping(); err == nil {
+			if pingErr := db.Ping(); pingErr == nil {
 				return db, nil
 			} else {
-				db.Close()
-				log.Warnf("database ping: %s", err)
+				db.Close() //nolint:errcheck
+				log.Warnf("database ping: %s", redactRuntimeError(pingErr))
+				err = fmt.Errorf("database ping: %s", redactRuntimeError(pingErr))
 			}
 
 		} else {
-			log.Warnf("database open: %s", err)
+			log.Warnf("database open: %s", redactRuntimeError(err))
+			err = fmt.Errorf("database open: %s", redactRuntimeError(err))
 		}
 
 		time.Sleep(time.Duration(i*100) * time.Millisecond)
@@ -104,67 +175,83 @@ func newDB(
 	}
 }
 
-func initTelemetry(conf *Config, driverName string) (string, error) {
-	var err error
-	var opts ocsql.TraceOptions
-
-	if conf.Serv.Telemetry.Tracing.ExcludeHealthCheck {
-		opts = ocsql.TraceOptions{
-			AllowRoot:    true,
-			Ping:         false,
-			RowsNext:     true,
-			RowsClose:    true,
-			RowsAffected: true,
-			LastInsertID: true,
-			Query:        conf.Telemetry.Tracing.IncludeQuery,
-			QueryParams:  conf.Telemetry.Tracing.IncludeParams,
-		}
-	} else {
-		opts = ocsql.TraceOptions{
-			AllowRoot:    true,
-			Ping:         true,
-			RowsNext:     true,
-			RowsClose:    true,
-			RowsAffected: true,
-			LastInsertID: true,
-			Query:        conf.Telemetry.Tracing.IncludeQuery,
-			QueryParams:  conf.Telemetry.Tracing.IncludeParams,
-		}
-	}
-
-	opt := ocsql.WithOptions(opts)
-	name := ocsql.WithInstanceName(conf.AppName)
-
-	driverName, err = ocsql.Register(driverName, opt, name)
+// newDBOnce attempts a single database connection without retries
+func newDBOnce(
+	conf *Config,
+	openDB, useTelemetry bool,
+	log *zap.SugaredLogger,
+	fs core.FS,
+) (*sql.DB, error) {
+	dc, err := initDBDriver(conf, openDB, useTelemetry, fs)
 	if err != nil {
-		return "", fmt.Errorf("unable to register ocsql driver: %v", err)
+		return nil, err
 	}
-	ocsql.RegisterAllViews()
-	return driverName, nil
+
+	var db *sql.DB
+	if dc.connector != nil {
+		db = sql.OpenDB(dc.connector)
+	} else {
+		db, err = sql.Open(dc.driverName, dc.connString)
+		if err != nil {
+			return nil, fmt.Errorf("database open: %s", redactRuntimeError(err))
+		}
+	}
+
+	db.SetMaxIdleConns(conf.DB.PoolSize)
+	db.SetMaxOpenConns(conf.DB.MaxConnections)
+	db.SetConnMaxIdleTime(conf.DB.MaxConnIdleTime)
+	db.SetConnMaxLifetime(conf.DB.MaxConnLifeTime)
+
+	if err := db.Ping(); err != nil {
+		db.Close() //nolint:errcheck
+		return nil, fmt.Errorf("database ping: %s", redactRuntimeError(err))
+	}
+
+	return db, nil
 }
 
-func initPostgres(conf *Config, openDB, useTelemetry bool, fs afero.Fs) (*dbConf, error) {
-	c := conf
-	config, _ := pgx.ParseConfig("")
-	config.Host = c.DB.Host
-	config.Port = c.DB.Port
-	config.User = c.DB.User
-	config.Password = c.DB.Password
+// initPostgres initializes the postgres database
+func initPostgres(conf *Config, openDB, useTelemetry bool, fs core.FS) (*dbConf, error) {
+	confCopy := conf
+	config, _ := pgx.ParseConfig(confCopy.DB.ConnString)
 
-	config.RuntimeParams = map[string]string{
-		"application_name": c.AppName,
-		"search_path":      c.DB.Schema,
+	// Check if the connection string is empty, if it, look at the other fields
+	if confCopy.DB.ConnString == "" {
+		if confCopy.DB.Host != "" {
+			config.Host = confCopy.DB.Host
+		}
+		if confCopy.DB.Port != 0 {
+			config.Port = confCopy.DB.Port
+		}
+		if confCopy.DB.User != "" {
+			config.User = confCopy.DB.User
+		}
+		if confCopy.DB.Password != "" {
+			config.Password = confCopy.DB.Password
+		}
+	}
+
+	if config.RuntimeParams == nil {
+		config.RuntimeParams = map[string]string{}
+	}
+
+	if confCopy.DB.Schema != "" {
+		config.RuntimeParams["search_path"] = confCopy.DB.Schema
+	}
+
+	if confCopy.AppName != "" {
+		config.RuntimeParams["application_name"] = confCopy.AppName
 	}
 
 	if openDB {
-		config.Database = c.DB.DBName
+		config.Database = confCopy.DB.DBName
 	}
 
-	if c.DB.EnableTLS {
-		if len(c.DB.ServerName) == 0 {
+	if confCopy.DB.EnableTLS {
+		if len(confCopy.DB.ServerName) == 0 {
 			return nil, errors.New("tls: server_name is required")
 		}
-		if len(c.DB.ServerCert) == 0 {
+		if len(confCopy.DB.ServerCert) == 0 {
 			return nil, errors.New("tls: server_cert is required")
 		}
 
@@ -172,10 +259,10 @@ func initPostgres(conf *Config, openDB, useTelemetry bool, fs afero.Fs) (*dbConf
 		var pem []byte
 		var err error
 
-		if strings.Contains(c.DB.ServerCert, pemSig) {
-			pem = []byte(strings.ReplaceAll(c.DB.ServerCert, `\n`, "\n"))
+		if strings.Contains(confCopy.DB.ServerCert, pemSig) {
+			pem = []byte(strings.ReplaceAll(confCopy.DB.ServerCert, `\n`, "\n"))
 		} else {
-			pem, err = afero.ReadFile(fs, c.DB.ServerCert)
+			pem, err = fs.Get(confCopy.DB.ServerCert)
 		}
 
 		if err != nil {
@@ -189,24 +276,24 @@ func initPostgres(conf *Config, openDB, useTelemetry bool, fs afero.Fs) (*dbConf
 		config.TLSConfig = &tls.Config{
 			MinVersion: tls.VersionTLS12,
 			RootCAs:    rootCertPool,
-			ServerName: c.DB.ServerName,
+			ServerName: confCopy.DB.ServerName,
 		}
 
-		if len(c.DB.ClientCert) > 0 {
-			if len(c.DB.ClientKey) == 0 {
+		if len(confCopy.DB.ClientCert) > 0 {
+			if len(confCopy.DB.ClientKey) == 0 {
 				return nil, errors.New("tls: client_key is required")
 			}
 
 			clientCert := make([]tls.Certificate, 0, 1)
 			var certs tls.Certificate
 
-			if strings.Contains(c.DB.ClientCert, pemSig) {
+			if strings.Contains(confCopy.DB.ClientCert, pemSig) {
 				certs, err = tls.X509KeyPair(
-					[]byte(strings.ReplaceAll(c.DB.ClientCert, `\n`, "\n")),
-					[]byte(strings.ReplaceAll(c.DB.ClientKey, `\n`, "\n")),
+					[]byte(strings.ReplaceAll(confCopy.DB.ClientCert, `\n`, "\n")),
+					[]byte(strings.ReplaceAll(confCopy.DB.ClientKey, `\n`, "\n")),
 				)
 			} else {
-				certs, err = loadX509KeyPair(fs, c.DB.ClientCert, c.DB.ClientKey)
+				certs, err = loadX509KeyPair(fs, confCopy.DB.ClientCert, confCopy.DB.ClientKey)
 			}
 
 			if err != nil {
@@ -218,28 +305,337 @@ func initPostgres(conf *Config, openDB, useTelemetry bool, fs afero.Fs) (*dbConf
 		}
 	}
 
-	return &dbConf{"pgx", stdlib.RegisterConnConfig(config)}, nil
+	return &dbConf{driverName: "pgx", connString: stdlib.RegisterConnConfig(config)}, nil
 }
 
-func initMysql(conf *Config, openDB, useTelemetry bool, fs afero.Fs) (*dbConf, error) {
+// initMysql initializes the mysql database
+func initMysql(conf *Config, openDB, useTelemetry bool, fs core.FS) (*dbConf, error) {
+	var connString string
 	c := conf
-	connString := fmt.Sprintf("%s:%s@tcp(%s:%d)/", c.DB.User, c.DB.Password, c.DB.Host, c.DB.Port)
+
+	if c.DB.ConnString == "" {
+		connString = fmt.Sprintf("%s:%s@tcp(%s:%d)/", c.DB.User, c.DB.Password, c.DB.Host, c.DB.Port)
+	} else {
+		connString = c.DB.ConnString
+	}
 
 	if openDB {
 		connString += c.DB.DBName
 	}
 
-	return &dbConf{"mysql", connString}, nil
+	return &dbConf{driverName: "mysql", connString: connString}, nil
 }
 
-func loadX509KeyPair(fs afero.Fs, certFile, keyFile string) (tls.Certificate, error) {
-	certPEMBlock, err := afero.ReadFile(fs, certFile)
-	if err != nil {
-		return tls.Certificate{}, err
+// initMssql initializes the mssql database
+func initMssql(conf *Config, openDB, useTelemetry bool, fs core.FS) (*dbConf, error) {
+	var connString string
+	c := conf
+
+	if c.DB.ConnString == "" {
+		port := c.DB.Port
+		if port == 0 || (c.DB.Type != "postgres" && port == 5432) {
+			port = 1433
+		}
+		connString = fmt.Sprintf("sqlserver://%s:%s@%s:%d",
+			url.PathEscape(c.DB.User), url.PathEscape(c.DB.Password), c.DB.Host, port)
+	} else {
+		connString = c.DB.ConnString
 	}
-	keyPEMBlock, err := afero.ReadFile(fs, keyFile)
+
+	if openDB && c.DB.DBName != "" {
+		connString += queryParamSep(connString) + "database=" + c.DB.DBName
+	}
+
+	// MSSQL-specific connection params
+	if c.DB.Encrypt != nil {
+		if *c.DB.Encrypt {
+			connString += queryParamSep(connString) + "encrypt=true"
+		} else {
+			connString += queryParamSep(connString) + "encrypt=disable"
+		}
+	}
+	if c.DB.TrustServerCertificate != nil && *c.DB.TrustServerCertificate {
+		connString += queryParamSep(connString) + "trustservercertificate=true"
+	}
+
+	return &dbConf{driverName: "sqlserver", connString: connString}, nil
+}
+
+// queryParamSep returns "?" if no query params exist yet, otherwise "&"
+func queryParamSep(s string) string {
+	if strings.Contains(s, "?") {
+		return "&"
+	}
+	return "?"
+}
+
+// initSqlite initializes the sqlite database
+func initSqlite(conf *Config, openDB, useTelemetry bool, fs core.FS) (*dbConf, error) {
+	connString := conf.DB.ConnString
+	if connString == "" {
+		connString = conf.DB.Path
+	}
+	if connString == "" {
+		return nil, fmt.Errorf("sqlite requires a connection string or path")
+	}
+
+	return &dbConf{driverName: "sqlite", connString: connString}, nil
+}
+
+// initOracle initializes the oracle database
+func initOracle(conf *Config, openDB, useTelemetry bool, fs core.FS) (*dbConf, error) {
+	var connString string
+	c := conf
+
+	if c.DB.ConnString == "" {
+		port := c.DB.Port
+		if port == 0 || (c.DB.Type != "postgres" && port == 5432) {
+			port = 1521
+		}
+		connString = fmt.Sprintf("oracle://%s:%s@%s:%d",
+			c.DB.User, c.DB.Password, c.DB.Host, port)
+	} else {
+		connString = c.DB.ConnString
+	}
+
+	if openDB && c.DB.DBName != "" {
+		connString += "/" + c.DB.DBName
+	}
+
+	return &dbConf{driverName: "oracle", connString: connString}, nil
+}
+
+// initMongo initializes the mongodb database using the mongodriver connector
+func initMongo(conf *Config, openDB, useTelemetry bool, fs core.FS) (*dbConf, error) {
+	connString := conf.DB.ConnString
+	if connString == "" {
+		if conf.DB.Host == "" {
+			return nil, fmt.Errorf("mongodb requires a connection string or host")
+		}
+		port := conf.DB.Port
+		if port == 0 || (conf.DB.Type != "postgres" && port == 5432) {
+			port = 27017
+		}
+		connString = fmt.Sprintf("mongodb://%s:%d", conf.DB.Host, port)
+		if conf.DB.User != "" {
+			connString = fmt.Sprintf("mongodb://%s:%s@%s:%d",
+				conf.DB.User, conf.DB.Password, conf.DB.Host, port)
+		}
+	}
+
+	dbName := conf.DB.DBName
+	if dbName == "" {
+		dbName = "graphjin"
+	}
+
+	client, err := mongo.Connect(options.Client().ApplyURI(connString))
 	if err != nil {
-		return tls.Certificate{}, err
+		return nil, fmt.Errorf("mongodb connect: %w", err)
+	}
+
+	connector := mongodriver.NewConnector(client, dbName)
+	return &dbConf{driverName: "mongodb", connector: connector}, nil
+}
+
+var snowflakeLogOnce sync.Once
+
+func silenceSnowflakeDriverLogs() {
+	snowflakeLogOnce.Do(func() {
+		_ = gosnowflake.GetLogger().SetLogLevel("fatal")
+	})
+}
+
+// initSnowflake initializes the snowflake database.
+// Snowflake requires a full DSN in connection_string.
+// When private_key_path or private_key_pem is set, key pair (JWT) authentication
+// is used via the gosnowflake driver's built-in support.
+func initSnowflake(conf *Config, openDB, useTelemetry bool, fs core.FS) (*dbConf, error) {
+	silenceSnowflakeDriverLogs()
+
+	connString := strings.TrimSpace(conf.DB.ConnString)
+	if connString == "" {
+		return nil, fmt.Errorf("snowflake requires connection_string")
+	}
+
+	keyPath := strings.TrimSpace(conf.DB.PrivateKeyPath)
+	keyPEM := strings.TrimSpace(conf.DB.PrivateKeyPEM)
+
+	// No key pair config — plain DSN passthrough (existing behavior)
+	if keyPath == "" && keyPEM == "" {
+		return &dbConf{driverName: "snowflake", connString: connString}, nil
+	}
+
+	// Load PEM data from file or inline
+	var pemData []byte
+	if keyPath != "" {
+		data, err := fs.Get(keyPath)
+		if err != nil {
+			return nil, fmt.Errorf("snowflake: reading private key file %q: %w", keyPath, err)
+		}
+		pemData = data
+	} else {
+		pemData = []byte(keyPEM)
+	}
+
+	privKey, err := loadSnowflakePrivateKey(pemData, conf.DB.KeyPassphrase)
+	if err != nil {
+		return nil, fmt.Errorf("snowflake: %w", err)
+	}
+
+	// Build the gosnowflake Config directly instead of using ParseDSN,
+	// which rejects empty passwords even when JWT auth makes them unnecessary.
+	cfg, err := parseSnowflakeDSN(connString)
+	if err != nil {
+		return nil, fmt.Errorf("snowflake: %w", err)
+	}
+
+	applySnowflakeJWT(cfg, privKey)
+
+	connector := gosnowflake.NewConnector(gosnowflake.SnowflakeDriver{}, *cfg)
+	return &dbConf{connector: connector}, nil
+}
+
+// applySnowflakeJWT configures a gosnowflake.Config for key pair (JWT) auth.
+// Sets ClientSessionKeepAlive so idle pooled connections don't hit the ~4h
+// master-token expiry — without it, the next query after expiry returns
+// "390114: Authentication token has expired" instead of transparently
+// re-signing a JWT. The keepalive flag is documented in gosnowflake as the
+// session parameter "client_session_keep_alive" (map[string]*string).
+func applySnowflakeJWT(cfg *gosnowflake.Config, privKey *rsa.PrivateKey) {
+	cfg.Authenticator = gosnowflake.AuthTypeJwt
+	cfg.PrivateKey = privKey
+	if cfg.Params == nil {
+		cfg.Params = map[string]*string{}
+	}
+	keepAlive := "true"
+	cfg.Params["client_session_keep_alive"] = &keepAlive
+}
+
+// parseSnowflakeDSN parses a Snowflake connection string into a gosnowflake.Config
+// without requiring a password. This is needed because gosnowflake.ParseDSN
+// rejects empty passwords even when JWT authentication will be used.
+//
+// Accepted format: user[:password]@account/database/schema[?key=value&...]
+func parseSnowflakeDSN(dsn string) (*gosnowflake.Config, error) {
+	// Split user info from the rest at '@'
+	atIdx := strings.IndexByte(dsn, '@')
+	if atIdx < 0 {
+		return nil, fmt.Errorf("invalid connection_string: missing '@' separator")
+	}
+	userInfo := dsn[:atIdx]
+	rest := dsn[atIdx+1:] // account/database/schema?params
+
+	var user, password string
+	if colonIdx := strings.IndexByte(userInfo, ':'); colonIdx >= 0 {
+		user = userInfo[:colonIdx]
+		password = userInfo[colonIdx+1:]
+	} else {
+		user = userInfo
+	}
+
+	if user == "" {
+		return nil, fmt.Errorf("invalid connection_string: user is empty")
+	}
+
+	// Split query params
+	var pathPart, queryPart string
+	if qIdx := strings.IndexByte(rest, '?'); qIdx >= 0 {
+		pathPart = rest[:qIdx]
+		queryPart = rest[qIdx+1:]
+	} else {
+		pathPart = rest
+	}
+
+	// Parse account/database/schema from the path
+	parts := strings.SplitN(pathPart, "/", 3)
+	if len(parts) < 1 || parts[0] == "" {
+		return nil, fmt.Errorf("invalid connection_string: account is empty")
+	}
+
+	cfg := &gosnowflake.Config{
+		User:     user,
+		Password: password,
+		Account:  parts[0],
+	}
+	if len(parts) > 1 {
+		cfg.Database = parts[1]
+	}
+	if len(parts) > 2 {
+		cfg.Schema = parts[2]
+	}
+
+	// Parse query parameters
+	if queryPart != "" {
+		params, err := url.ParseQuery(queryPart)
+		if err != nil {
+			return nil, fmt.Errorf("invalid connection_string query params: %w", err)
+		}
+		if v := params.Get("warehouse"); v != "" {
+			cfg.Warehouse = v
+		}
+		if v := params.Get("role"); v != "" {
+			cfg.Role = v
+		}
+		if v := params.Get("account"); v != "" {
+			cfg.Account = v
+		}
+		if v := params.Get("protocol"); v != "" {
+			cfg.Protocol = v
+		}
+	}
+
+	return cfg, nil
+}
+
+// loadSnowflakePrivateKey parses a PKCS#8 PEM-encoded RSA private key,
+// with optional passphrase decryption for encrypted keys.
+func loadSnowflakePrivateKey(pemData []byte, passphrase string) (*rsa.PrivateKey, error) {
+	block, _ := pem.Decode(pemData)
+	if block == nil {
+		return nil, fmt.Errorf("invalid PEM data: no PEM block found")
+	}
+
+	var derBytes []byte
+
+	//nolint:staticcheck // x509.IsEncryptedPEMBlock is deprecated but needed for encrypted PEM support
+	if x509.IsEncryptedPEMBlock(block) {
+		if passphrase == "" {
+			return nil, fmt.Errorf("private key is encrypted but no key_passphrase provided")
+		}
+		//nolint:staticcheck // x509.DecryptPEMBlock is deprecated but needed for encrypted PEM support
+		decrypted, err := x509.DecryptPEMBlock(block, []byte(passphrase))
+		if err != nil {
+			return nil, fmt.Errorf("decrypting private key: %w (wrong passphrase?)", err)
+		}
+		derBytes = decrypted
+	} else {
+		derBytes = block.Bytes
+	}
+
+	key, err := x509.ParsePKCS8PrivateKey(derBytes)
+	if err != nil {
+		return nil, fmt.Errorf("parsing PKCS#8 private key: %w (ensure key is in PKCS#8 format: openssl pkcs8 -topk8)", err)
+	}
+
+	rsaKey, ok := key.(*rsa.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("private key is not RSA (got %T); Snowflake requires RSA-2048", key)
+	}
+
+	return rsaKey, nil
+}
+
+// loadX509KeyPair loads a X509 key pair from a file system
+func loadX509KeyPair(fs core.FS, certFile, keyFile string) (
+	cert tls.Certificate, err error,
+) {
+	certPEMBlock, err := fs.Get(certFile)
+	if err != nil {
+		return cert, err
+	}
+	keyPEMBlock, err := fs.Get(keyFile)
+	if err != nil {
+		return cert, err
 	}
 	return tls.X509KeyPair(certPEMBlock, keyPEMBlock)
 }

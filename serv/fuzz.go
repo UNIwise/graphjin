@@ -1,11 +1,8 @@
-// +build gofuzz
-
 package serv
 
-func Fuzz(data []byte) int {
-	gql := string(data)
-	QueryName(gql)
-	gqlHash(gql, nil, "")
+// func Fuzz(data []byte) int {
+// 	gql := string(data)
+// 	graph.FastParse(gql)
 
-	return 1
-}
+// 	return 1
+// }

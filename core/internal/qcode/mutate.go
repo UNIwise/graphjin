@@ -4,15 +4,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
-	"github.com/dosco/graphjin/core/internal/graph"
-	"github.com/dosco/graphjin/core/internal/sdata"
-	"github.com/dosco/graphjin/core/internal/util"
+	"github.com/dosco/graphjin/core/v3/internal/graph"
+	"github.com/dosco/graphjin/core/v3/internal/sdata"
+	"github.com/dosco/graphjin/core/v3/internal/util"
 )
 
-var (
-	errUserIDReq = errors.New("$user_id required for this query")
-)
+var errUserIDReq = errors.New("$user_id required for this query")
 
 type MType uint8
 
@@ -25,6 +24,15 @@ const (
 	MTDisconnect
 	MTNone
 	MTKeyword
+)
+
+// ConflictAction controls the behavior of an insert when its inferred unique
+// target conflicts with an existing row.
+type ConflictAction uint8
+
+const (
+	ConflictNone ConflictAction = iota
+	ConflictGet
 )
 
 // const (
@@ -45,30 +53,36 @@ var updateTypes = map[string]MType{
 }
 
 type Mutate struct {
+	Field
 	mData
 
 	ID        int32
 	ParentID  int32
+	SelID     int32
 	DependsOn map[int32]struct{}
 	Type      MType
 	// CType     uint8
-	Key      string
-	Path     []string
-	Val      json.RawMessage
-	Cols     []MColumn
-	RCols    []MRColumn
-	Ti       sdata.DBTable
-	Rel      sdata.DBRel
-	Where    Filter
-	Multi    bool
-	children []int32
-	render   bool
+	Key            string
+	Path           []string
+	Val            json.RawMessage
+	Cols           []MColumn
+	RCols          []MRColumn
+	Ti             sdata.DBTable
+	Rel            sdata.DBRel
+	Where          Filter
+	ConflictAction ConflictAction
+	ConflictCols   []MColumn
+	Multi          bool
+	children       []int32
+	render         bool
 }
 
 type MColumn struct {
 	Col       sdata.DBColumn
 	FieldName string
+	Alias     string
 	Value     string
+	Set       bool
 }
 
 type MRColumn struct {
@@ -82,57 +96,106 @@ type MTable struct {
 }
 
 type mState struct {
-	st *util.StackInf
-	qc *QCode
-	mt MType
-	id int32
+	st        *util.StackInf
+	qc        *QCode
+	mt        MType
+	id        int32
+	rootSelID int32
 }
 
-func (co *Compiler) compileMutation(qc *QCode, role string) error {
-	var err error
-	var whereReq bool
+func (co *Compiler) compileMutation(qc *QCode,
+	vmap map[string]json.RawMessage, role string,
+) (err error) {
+	if qc.ActionVar != "" {
+		qc.ActionVal = vmap[qc.ActionVar]
+	}
 
-	sel := &qc.Selects[0]
-	m := Mutate{ParentID: -1, Key: sel.Table, Ti: sel.Ti}
+	var whereReq bool
 
 	switch qc.SType {
 	case QTInsert:
-		m.Type = MTInsert
 	case QTUpdate:
-		m.Type = MTUpdate
 		whereReq = true
 	case QTUpsert:
-		m.Type = MTUpsert
 		whereReq = true
 	case QTDelete:
-		m.Type = MTDelete
 		whereReq = true
 	default:
 		return errors.New("valid mutations: insert, update, upsert, delete'")
 	}
 
-	if whereReq && qc.Selects[0].Where.Exp == nil {
-		return errors.New("where clause required")
-	}
-
-	if m.Type == MTDelete {
-		m.render = true
-		qc.Mutates = append(qc.Mutates, m)
-		return nil
-	}
-
-	m.mData, err = parseMutationData(qc, qc.ActionArg.Val)
-	if err != nil {
-		return err
-	}
-
 	mutates := []Mutate{}
 	mmap := map[int32]int32{-1: -1}
 	mids := map[string][]int32{}
-
 	st := util.NewStackInf()
-	st.Push(m)
-	ms := mState{st: st, qc: qc, mt: m.Type, id: (m.ID + 1)}
+	var nextID int32
+
+	// Process each root select as a separate root mutation
+	for _, rootID := range qc.Roots {
+		sel := &qc.Selects[rootID]
+
+		if whereReq && sel.Where.Exp == nil {
+			return errors.New("where clause required")
+		}
+
+		m := Mutate{
+			Field:    Field{Type: FieldTypeTable},
+			ID:       nextID,
+			ParentID: -1,
+			Key:      sel.Table,
+			Ti:       sel.Ti,
+			SelID:    rootID,
+		}
+		nextID++
+
+		switch qc.SType {
+		case QTInsert:
+			m.Type = MTInsert
+		case QTUpdate:
+			m.Type = MTUpdate
+		case QTUpsert:
+			m.Type = MTUpsert
+		case QTDelete:
+			m.Type = MTDelete
+		}
+
+		if m.Type == MTDelete {
+			m.render = true
+			st.Push(m)
+			continue
+		}
+
+		m.mData, err = parseMutationDataFromArg(qc, sel.FieldName, vmap)
+		if err != nil {
+			return err
+		}
+
+		if m.Data.Type == graph.NodeList {
+			for _, v := range co.processList(m) {
+				st.Push(v)
+			}
+		} else {
+			st.Push(m)
+		}
+	}
+
+	// Convert QType to MType for mState
+	var mt MType
+	switch qc.SType {
+	case QTInsert:
+		mt = MTInsert
+	case QTUpdate:
+		mt = MTUpdate
+	case QTUpsert:
+		mt = MTUpsert
+	case QTDelete:
+		mt = MTDelete
+	}
+	msID := int32(st.Len() + 1)
+	if nextID > msID {
+		msID = nextID
+	}
+	ms := mState{st: st, qc: qc, mt: mt, id: msID}
 
 	for {
 		if st.Len() == 0 {
@@ -149,6 +212,7 @@ func (co *Compiler) compileMutation(qc *QCode, role string) error {
 			continue
 		}
 
+		ms.rootSelID = item.SelID
 		if err := co.newMutate(&ms, item, role); err != nil {
 			return err
 		}
@@ -197,13 +261,117 @@ func (co *Compiler) compileMutation(qc *QCode, role string) error {
 		}
 	}
 	qc.Mutates = mutates
+	return co.configureInsertConflict(qc)
+}
+
+// compileOpenAPIMutation retains the call JSON object without treating its
+// keys as database columns. Runtime validation is performed against the
+// operation's OpenAPI request contract before any network slot is acquired.
+func (co *Compiler) compileOpenAPIMutation(qc *QCode, vmap map[string]json.RawMessage) error {
+	if len(qc.Roots) != 1 {
+		return errors.New("openapi mutations support exactly one root operation")
+	}
+	rootID := qc.Roots[0]
+	sel := &qc.Selects[rootID]
+	if sel.Ti.Type != "openapi_mutation" {
+		return fmt.Errorf("call is valid only on an openapi mutation root, not %q", sel.Ti.Name)
+	}
+	data, err := parseMutationDataFromArg(qc, sel.FieldName, vmap)
+	if err != nil {
+		return err
+	}
+	if data.Data == nil || data.Data.Type != graph.NodeObj {
+		return fmt.Errorf("openapi mutation call for %s must be a JSON object", sel.FieldName)
+	}
+	qc.Mutates = []Mutate{{
+		Field:    Field{Type: FieldTypeTable},
+		mData:    data,
+		ID:       0,
+		ParentID: -1,
+		SelID:    rootID,
+		Type:     MTNone,
+		Key:      sel.Table,
+		Ti:       sel.Ti,
+	}}
+	return nil
+}
+
+func (co *Compiler) configureInsertConflict(qc *QCode) error {
+	if qc.InsertConflictAction == ConflictNone {
+		return nil
+	}
+	if qc.SType != QTInsert {
+		return errors.New("on_conflict is only valid with insert")
+	}
+	if qc.actionArg.Val != nil && qc.actionArg.Val.Type == graph.NodeList {
+		return errors.New("on_conflict: get does not support bulk or nested inserts")
+	}
+	if strings.HasPrefix(strings.TrimSpace(string(qc.ActionVal)), "[") {
+		return errors.New("on_conflict: get does not support bulk or nested inserts")
+	}
+	if len(qc.Roots) != 1 || len(qc.Mutates) != 1 {
+		return errors.New("on_conflict: get does not support bulk or nested inserts")
+	}
+
+	m := &qc.Mutates[0]
+	if m.Type != MTInsert || m.ParentID != -1 || m.Array || m.Data == nil || m.Data.Type != graph.NodeObj || len(m.children) != 0 || len(m.RCols) != 0 {
+		return errors.New("on_conflict: get does not support bulk or nested inserts")
+	}
+
+	byName := make(map[string]MColumn, len(m.Cols))
+	for _, col := range m.Cols {
+		byName[col.Col.Name] = col
+	}
+
+	var candidates [][]MColumn
+	if len(m.Ti.PrimaryCols) != 0 {
+		pk := make([]MColumn, 0, len(m.Ti.PrimaryCols))
+		for _, col := range m.Ti.PrimaryCols {
+			mc, ok := byName[col.Name]
+			if !ok {
+				pk = nil
+				break
+			}
+			pk = append(pk, mc)
+		}
+		if len(pk) != 0 {
+			candidates = append(candidates, pk)
+		}
+	}
+
+	for _, col := range m.Ti.Columns {
+		if col.PrimaryKey || !col.UniqueKey {
+			continue
+		}
+		if mc, ok := byName[col.Name]; ok {
+			candidates = append(candidates, []MColumn{mc})
+		}
+	}
+
+	if len(candidates) == 0 {
+		return fmt.Errorf("on_conflict: get on table %q requires a supplied primary or unique key", m.Ti.Name)
+	}
+	if len(candidates) > 1 {
+		names := make([]string, 0, len(candidates))
+		for _, candidate := range candidates {
+			parts := make([]string, len(candidate))
+			for i := range candidate {
+				parts[i] = candidate[i].Col.Name
+			}
+			names = append(names, strings.Join(parts, "+"))
+		}
+		return fmt.Errorf("on_conflict: get on table %q is ambiguous; supplied unique keys: %s", m.Ti.Name, strings.Join(names, ", "))
+	}
+
+	m.ConflictAction = ConflictGet
+	m.ConflictCols = candidates[0]
 	return nil
 }
 
 type mData struct {
-	Data    *graph.Node
-	IsJSON  bool
-	IsArray bool
+	Data   *graph.Node
+	IsJSON bool
+	Array  bool
 }
 
 func parseDataValue(qc *QCode, actionVal *graph.Node, isJSON bool) (mData, error) {
@@ -221,27 +389,63 @@ func parseDataValue(qc *QCode, actionVal *graph.Node, isJSON bool) (mData, error
 	return md, nil
 }
 
-func parseMutationData(qc *QCode, actionVal *graph.Node) (mData, error) {
+func parseMutationData(qc *QCode) (mData, error) {
 	var md mData
 	var err error
 
-	switch actionVal.Type {
+	av := qc.actionArg.Val
+	switch av.Type {
 	case graph.NodeVar:
-		val, ok := qc.Vars[actionVal.Val]
-		if !ok {
-			return md, fmt.Errorf("variable not found: %s", actionVal.Val)
+		if len(qc.ActionVal) == 0 {
+			return md, fmt.Errorf("variable not found: %s", av.Val)
 		}
-		md.Data, err = graph.ParseArgValue(string(val), true)
+		md.Data, err = graph.ParseArgValue(string(qc.ActionVal), true)
 		if err != nil {
 			return md, err
 		}
 		md.IsJSON = true
 
 	default:
-		md.Data = actionVal
+		md.Data = av
+	}
+	return md, nil
+}
+
+func parseMutationDataFromArg(qc *QCode, key string, vmap map[string]json.RawMessage) (mData, error) {
+	var md mData
+	var err error
+
+	arg, ok := qc.actionArgs[key]
+	if !ok {
+		return parseMutationData(qc)
 	}
 
-	md.IsArray = md.Data.Type == graph.NodeList
+	av := arg.Val
+	if av == nil {
+		return parseMutationData(qc)
+	}
+
+	multiRoot := len(qc.Roots) > 1
+
+	switch av.Type {
+	case graph.NodeVar:
+		val := vmap[av.Val]
+		if len(val) == 0 {
+			return md, fmt.Errorf("variable not found: %s", av.Val)
+		}
+		md.Data, err = graph.ParseArgValue(string(val), true)
+		if err != nil {
+			return md, err
+		}
+		// For multi-root mutations, each root must use its own inline data
+		// rather than the shared _sg_input CTE which only binds one ActionVar.
+		if !multiRoot {
+			md.IsJSON = true
+		}
+
+	default:
+		md.Data = av
+	}
 	return md, nil
 }
 
@@ -251,10 +455,6 @@ func parseMutationData(qc *QCode, actionVal *graph.Node) (mData, error) {
 func (co *Compiler) newMutate(ms *mState, m Mutate, role string) error {
 	trv := co.getRole(role, m.Ti.Schema, m.Ti.Name, m.Key)
 	data := m.Data
-
-	if m.IsArray && m.IsJSON {
-		data = data.Children[0]
-	}
 
 	items, err := co.processNestedMutations(ms, &m, data, trv)
 	if err != nil {
@@ -307,7 +507,7 @@ func (co *Compiler) newMutate(ms *mState, m Mutate, role string) error {
 }
 
 func (co *Compiler) processNestedMutations(ms *mState, m *Mutate, data *graph.Node, trv trval) ([]Mutate, error) {
-	var m1 Mutate
+	var ml []Mutate
 	var md mData
 	var err error
 
@@ -320,20 +520,14 @@ func (co *Compiler) processNestedMutations(ms *mState, m *Mutate, data *graph.No
 			return nil, err
 		}
 
-		if md.Data.Type != graph.NodeObj {
+		if md.Data.Type != graph.NodeObj && md.Data.Type != graph.NodeList {
 			continue
 		}
 
-		var k string
-
-		if co.c.EnableCamelcase {
-			k = util.ToSnake(v.Name)
-		} else {
-			k = v.Name
-		}
+		k := co.ParseName(v.Name)
 
 		// Get child-to-parent relationship
-		paths, err := co.s.FindPath(k, m.Key, "")
+		paths, err := co.FindPath(k, m.Key, "")
 		// no relationship found must be a keyword
 		if err != nil {
 			var ty MType
@@ -347,7 +541,7 @@ func (co *Compiler) processNestedMutations(ms *mState, m *Mutate, data *graph.No
 			}
 
 			if ok && ty != MTKeyword {
-				m1 = Mutate{
+				ml = []Mutate{{
 					mData:    md,
 					ID:       ms.id,
 					ParentID: m.ParentID,
@@ -358,7 +552,7 @@ func (co *Compiler) processNestedMutations(ms *mState, m *Mutate, data *graph.No
 					Ti:     m.Ti,
 					Rel:    m.Rel,
 					render: true,
-				}
+				}}
 				m.Type = MTNone
 
 			} else if ok && ty == MTKeyword {
@@ -376,33 +570,79 @@ func (co *Compiler) processNestedMutations(ms *mState, m *Mutate, data *graph.No
 			ti := rel.Left.Ti
 
 			if rel.Type != sdata.RelRecursive &&
-				ms.id == 1 && ti.Name == ms.qc.Selects[0].Ti.Name {
+				ms.id == 1 && ti.Name == ms.qc.Selects[ms.rootSelID].Ti.Name {
 				return nil, fmt.Errorf("remove json root '%s' from '%s' data", k, ms.qc.SType)
 			}
 
-			m1 = Mutate{
+			ml = []Mutate{{
 				mData:    md,
 				ID:       ms.id,
 				ParentID: m.ID,
 				Type:     m.Type,
 				Key:      k,
-				//Val:      v,
+				// Val:      v,
 				Path: append(m.Path, k),
 				Ti:   ti,
 				Rel:  rel,
-			}
+			}}
 		}
 
-		if err = co.processDirectives(ms, &m1, md.Data, trv); err != nil {
+		if err = co.processDirectives(ms, &ml[0], md.Data, trv); err != nil {
 			return nil, err
 		}
 
-		items = append(items, m1)
-		m.children = append(m.children, m1.ID)
-		ms.id++
+		if md.Data.Type == graph.NodeList {
+			ml = co.processList(ml[0])
+		}
+
+		for _, v := range ml {
+			items = append(items, v)
+			m.children = append(m.children, v.ID)
+			ms.id++
+		}
 	}
 
 	return items, nil
+}
+
+func (co *Compiler) processList(m Mutate) []Mutate {
+	// For MongoDB: always expand arrays into multiple mutations
+	// MongoDB processes each element separately in its driver
+	if co.s.DBType() == "mongodb" {
+		// For single objects, return single mutation
+		if m.Data.Type != graph.NodeList {
+			return []Mutate{m}
+		}
+		// For arrays, create separate mutations for each element
+		var mList []Mutate
+		for i := range m.Data.Children {
+			m1 := m
+			m1.Data = m.Data.Children[i]
+			m1.Array = m1.Data.Type == graph.NodeList
+			m1.ID += int32(i)
+			mList = append(mList, m1)
+		}
+		return mList
+	}
+
+	// For SQL databases: use Array flag to control json_to_recordset vs json_to_record
+	// The SQL is generated once and processes all elements from the JSON parameter
+	if m.IsJSON {
+		m.Array = m.Data.Type == graph.NodeList
+		m.Data = m.Data.Children[0]
+		return []Mutate{m}
+	}
+
+	// For non-IsJSON (inline data), create separate mutations for each element
+	var mList []Mutate
+	for i := range m.Data.Children {
+		m1 := m
+		m1.Data = m.Data.Children[i]
+		m1.Array = m1.Data.Type == graph.NodeList
+		m1.ID += int32(i)
+		mList = append(mList, m1)
+	}
+	return mList
 }
 
 func (co *Compiler) processDirectives(ms *mState, m *Mutate, data *graph.Node, trv trval) error {
@@ -435,7 +675,7 @@ func (co *Compiler) processDirectives(ms *mState, m *Mutate, data *graph.Node, t
 			CMap:     filterNode.CMap,
 		}
 
-		if m.Where.Exp, nu, err = co.compileArgNode(
+		if m.Where.Exp, nu, err = co.compileBaseExpNode(
 			"",
 			m.Ti,
 			st,
@@ -505,7 +745,6 @@ func (co *Compiler) addTablesAndColumns(m *Mutate, items []Mutate, data *graph.N
 		// Render child foreign key columns if child-to-parent
 		// relationship is one-to-many
 		for _, v := range items {
-
 			if v.Rel.Type == sdata.RelOneToMany {
 				m.DependsOn[v.ID] = struct{}{}
 				m.RCols = append(m.RCols, MRColumn{
@@ -517,17 +756,18 @@ func (co *Compiler) addTablesAndColumns(m *Mutate, items []Mutate, data *graph.N
 		}
 
 	case MTUpdate:
-		if m.Rel.Type == sdata.RelOneToMany {
+		// For updates, the parent MUST execute before the child
+		// if they are linked, so the child can use the parent's ID in its WHERE clause.
+		if m.ParentID != -1 {
 			m.DependsOn[m.ParentID] = struct{}{}
+		}
+
+		if m.Rel.Type == sdata.RelOneToMany {
 			m.RCols = append(m.RCols, MRColumn{
 				Col:  m.Rel.Left.Col,
 				VCol: m.Rel.Right.Col,
 			})
 			cm[m.Rel.Left.Col.Name] = struct{}{}
-		}
-
-		if m.Rel.Type == sdata.RelOneToOne {
-			m.DependsOn[m.ParentID] = struct{}{}
 		}
 
 	default:
@@ -556,9 +796,8 @@ func (co *Compiler) getColumnsFromData(m *Mutate, data *graph.Node, trv trval, c
 	var cols []MColumn
 
 	for k, v := range trv.getPresets(m.Type) {
-		if co.c.EnableCamelcase {
-			k = util.ToSnake(k)
-		}
+		k1 := k
+		k := co.ParseName(k)
 
 		if _, ok := cm[k]; ok {
 			continue
@@ -569,7 +808,7 @@ func (co *Compiler) getColumnsFromData(m *Mutate, data *graph.Node, trv trval, c
 			return nil, err
 		}
 
-		cols = append(cols, MColumn{Col: col, FieldName: k, Value: v})
+		cols = append(cols, MColumn{Col: col, FieldName: k1, Alias: k, Value: v, Set: true})
 		cm[k] = struct{}{}
 	}
 
@@ -598,9 +837,8 @@ func (co *Compiler) getColumnsFromData(m *Mutate, data *graph.Node, trv trval, c
 	// put this back in once we have integration testing
 
 	for k := range data.CMap {
-		if co.c.EnableCamelcase {
-			k = util.ToSnake(k)
-		}
+		k1 := k
+		k := co.ParseName(k)
 
 		if _, ok := cm[k]; ok {
 			continue
@@ -608,14 +846,33 @@ func (co *Compiler) getColumnsFromData(m *Mutate, data *graph.Node, trv trval, c
 
 		col, ok := m.Ti.ColumnExists(k)
 		if !ok {
-			continue
+			// Object- and list-valued keys are relationship targets or nested
+			// shapes: processNestedMutations resolves those and errors on the
+			// truly unknown ones. Keyword keys (find/where/connect/disconnect)
+			// are consumed by the mutation compiler itself. Everything else is
+			// a scalar the caller believes is a column, and silently dropping
+			// it loses data — a benchmark insert lost its timestamp this way
+			// and only failed two steps later as a NOT NULL constraint — so it
+			// now errors exactly like unknown object keys always have.
+			node := data.CMap[k1]
+			if node != nil && (node.Type == graph.NodeObj || node.Type == graph.NodeList) {
+				continue
+			}
+			if _, keyword := insertTypes[k]; keyword {
+				continue
+			}
+			if _, keyword := updateTypes[k]; keyword {
+				continue
+			}
+			_, err := m.Ti.GetColumn(k)
+			return nil, err
 		}
 
 		if col.Blocked {
 			return nil, fmt.Errorf("column blocked: %s", k)
 		}
 
-		cols = append(cols, MColumn{Col: col, FieldName: k})
+		cols = append(cols, MColumn{Col: col, FieldName: k1, Alias: k})
 	}
 
 	return cols, nil

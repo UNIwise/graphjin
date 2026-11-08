@@ -1,122 +1,183 @@
 package serv
 
 import (
-	"io/fs"
 	"net/http"
-	"path"
-	"strings"
 
-	"github.com/dosco/graphjin/internal/common"
-	"github.com/dosco/graphjin/serv/internal/auth"
-	"github.com/klauspost/compress/gzhttp"
-	"go.opencensus.io/plugin/ochttp"
-	"go.uber.org/zap"
-
-	"github.com/felixge/fgprof"
+	"github.com/dosco/graphjin/auth/v3"
 )
 
 const (
-	apiRoute     = "/api/v1/graphql"
-	actionRoute  = "/api/v1/actions"
-	healthRoute  = "/health"
-	metricsRoute = "/metrics"
+	routeGraphQL           = "/api/v1/graphql"
+	routeAgent             = "/api/v1/agent"
+	routeAgentStatus       = "/api/v1/agent/status"
+	routeAgentRuns         = "/api/v1/agent/runs/"
+	routeAgentProfiles     = "/api/v1/agent/profiles"
+	routeConsoleBootstrap  = "/api/v1/console/bootstrap"
+	routeEvalReports       = "/api/v1/eval/reports"
+	routeEvalScore         = "/api/v1/eval/score"
+	routeEvalReportsPrefix = "/api/v1/eval/reports/"
+	routeREST              = "/api/v1/rest/"
+	routeWorkflows         = "/api/v1/workflows/"
+	routeWatches           = "/api/v1/watches"
+	routeWatchEvents       = "/api/v1/watch-events"
+	routeOpenAPI           = "/api/v1/openapi.json"
+	routeMCP               = "/api/v1/mcp"
+	routeMCPMsg            = "/api/v1/mcp/message"
+	routeConfSchema        = "/api/v1/config/schema.json"
+	healthRoute            = "/health"
 )
 
-func (s *service) isHealthEndpoint(r *http.Request) bool {
-	p := r.URL.Path
-	return p == healthRoute || p == metricsRoute ||
-		(s.conf.Telemetry.Metrics.Endpoint != "" && p == s.conf.Telemetry.Metrics.Endpoint)
+type Mux interface {
+	Handle(string, http.Handler)
+	ServeHTTP(http.ResponseWriter, *http.Request)
 }
 
-func routeHandler(s1 *Service, mux *http.ServeMux) (http.Handler, error) {
-	var err error
-	s := s1.Load().(*service)
+// routesHandler is the main handler for all routes
+func routesHandler(s1 *HttpService, mux Mux, ns *string) (http.Handler, error) {
+	s := s1.Load().(*graphjinService)
 
 	// Healthcheck API
-	mux.Handle(healthRoute, healthV1Handler(s1))
+	mux.Handle(healthRoute, healthCheckHandler(s1))
 
-	if s.conf.HotDeploy {
-		// Rollback Config API
-		mux.Handle(common.RollbackRoute, adminRollbackHandler(s1))
-		// Deploy Config API
-		mux.Handle(common.DeployRoute, adminDeployHandler(s1))
+	// Config JSON Schema (dev only) for editor autocomplete and tooling.
+	// Contains field structure and docs, never config values.
+	if !s.conf.Serv.Production {
+		mux.Handle(routeConfSchema, configSchemaHandler())
 	}
 
-	if s.conf.EnableTracing {
-		mux.Handle("/debug/fgprof", fgprof.Handler())
-	}
+	// Hot deploy API
+	// if s.conf.HotDeploy {
+	// 	mux.Handle(RollbackRoute, adminRollbackHandler(s1))
+	// 	mux.Handle(DeployRoute, adminDeployHandler(s1))
+	// }
 
-	if err := setActionRoutes(s1, mux); err != nil {
-		return nil, err
-	}
+	// Skip GraphQL/REST/OpenAPI/WebUI in MCP-only mode.
+	if !s.conf.MCP.Only {
+		ah, err := auth.NewAuthHandlerFunc(s.conf.Auth)
+		if err != nil {
+			s.log.Fatalf("api: error initializing auth handler: %s", err)
+		}
+		if s.conf.Auth.Development {
+			s.log.Warn("api: auth.development=true this allows clients to bypass authentication")
+		}
+		if consoleSessionsEnabled(s.conf) {
+			// The console holds its JWT in a session cookie; sign-in verifies
+			// a token with the plain handler before it becomes a session.
+			mux.Handle(routeAuthSession, s1.AuthSession(ah))
+			ah = withConsoleSession(ah)
+		}
 
-	if s.conf.WebUI {
-		if webRoot, err := fs.Sub(webBuild, "web/build"); err != nil {
-			return nil, err
+		if s.conf.WebUI {
+			mux.Handle("/", s1.WebUI("/", routeGraphQL))
+		}
+
+		// GraphQL / REST API
+		if ns == nil {
+			mux.Handle(routeGraphQL, s1.GraphQL(ah))
+			mux.Handle(routeConsoleBootstrap, s1.ConsoleBootstrap(ah))
+			if evalReportsConfigured(s.conf) {
+				mux.Handle(routeEvalScore, s1.EvalScore(ah))
+				mux.Handle(routeEvalReports, s1.EvalReports(ah))
+				mux.Handle(routeEvalReportsPrefix, s1.EvalReports(ah))
+			}
+			mux.Handle(routeAgentStatus, s1.AgentStatus(ah))
+			if s.conf.agentEnabled() {
+				mux.Handle(routeAgent, s1.Agent(ah))
+				if s.threadsEnabled() {
+					mux.Handle(routeAgentRuns, s1.AgentRuns(ah))
+					mux.Handle(routeAgentProfiles+"/", s1.AgentProfiles(ah))
+				}
+			}
+			if s.watchesEnabled() {
+				mux.Handle(routeWatches, s1.Watches(ah))
+				mux.Handle(routeWatches+"/", s1.Watches(ah))
+				mux.Handle(routeWatchEvents, s1.Watches(ah))
+				mux.Handle(routeWatchEvents+"/", s1.Watches(ah))
+			}
+			mux.Handle(routeREST, s1.REST(ah))
+			if s.conf.legacyDiscoveryEnabled() {
+				mux.Handle(routeWorkflows, s1.Workflows(ah))
+			}
+			mux.Handle(routeOpenAPI, apiV1Handler(s1, nil, s1.OpenAPI(), ah))
 		} else {
-			mux.Handle("/", http.FileServer(http.FS(webRoot)))
+			mux.Handle(routeGraphQL, s1.GraphQLWithNS(ah, *ns))
+			mux.Handle(routeConsoleBootstrap, s1.ConsoleBootstrapWithNS(ah, *ns))
+			if evalReportsConfigured(s.conf) {
+				mux.Handle(routeEvalScore, s1.EvalScoreWithNS(ah, *ns))
+				mux.Handle(routeEvalReports, s1.EvalReportsWithNS(ah, *ns))
+				mux.Handle(routeEvalReportsPrefix, s1.EvalReportsWithNS(ah, *ns))
+			}
+			mux.Handle(routeAgentStatus, s1.AgentStatusWithNS(ah, *ns))
+			if s.conf.agentEnabled() {
+				mux.Handle(routeAgent, s1.AgentWithNS(ah, *ns))
+				if s.threadsEnabled() {
+					mux.Handle(routeAgentRuns, s1.AgentRunsWithNS(ah, *ns))
+					mux.Handle(routeAgentProfiles+"/", s1.AgentProfilesWithNS(ah, *ns))
+				}
+			}
+			if s.watchesEnabled() {
+				mux.Handle(routeWatches, s1.WatchesWithNS(ah, *ns))
+				mux.Handle(routeWatches+"/", s1.WatchesWithNS(ah, *ns))
+				mux.Handle(routeWatchEvents, s1.WatchesWithNS(ah, *ns))
+				mux.Handle(routeWatchEvents+"/", s1.WatchesWithNS(ah, *ns))
+			}
+			mux.Handle(routeREST, s1.RESTWithNS(ah, *ns))
+			if s.conf.legacyDiscoveryEnabled() {
+				mux.Handle(routeWorkflows, s1.WorkflowsWithNS(ah, *ns))
+			}
+			mux.Handle(routeOpenAPI, apiV1Handler(s1, ns, s1.OpenAPIWithNS(*ns), ah))
 		}
 	}
 
-	// Main GraphQL API
-	h := apiV1Handler(s1)
+	// Keep the legacy workflow endpoint available in MCP-only mode only when
+	// legacy discovery/action surfaces are explicitly enabled.
+	if s.conf.MCP.Only && s.conf.legacyDiscoveryEnabled() {
+		ah, err := auth.NewAuthHandlerFunc(s.conf.Auth)
+		if err != nil {
+			s.log.Fatalf("api: error initializing auth handler: %s", err)
+		}
 
-	if s.conf.rateLimiterEnable() {
-		h = rateLimiter(s1, h)
-	}
+		if s.conf.Auth.Development {
+			s.log.Warn("api: auth.development=true this allows clients to bypass authentication")
+		}
 
-	if s.conf.HTTPGZip {
-		if gz, err := gzhttp.NewWrapper(gzhttp.CompressionLevel(6)); err != nil {
-			return nil, err
+		if ns == nil {
+			mux.Handle(routeWorkflows, s1.Workflows(ah))
 		} else {
-			h = gz(h)
+			mux.Handle(routeWorkflows, s1.WorkflowsWithNS(ah, *ns))
 		}
 	}
 
-	mux.Handle(apiRoute, h)
-
-	if s.conf.telemetryEnabled() {
-		if s.closeFn, err = enableObservability(s, mux); err != nil {
-			return nil, err
+	// Legacy Discovery API. In sources used this is disabled unless
+	// mcp.legacy_discovery is enabled; use catalog/control-plane GraphQL instead.
+	if s.conf.legacyDiscoveryEnabled() {
+		discAuth, err := auth.NewAuthHandlerFunc(s.conf.Auth)
+		if err != nil {
+			s.log.Fatalf("api: error initializing discovery auth handler: %s", err)
 		}
+		mux.Handle(routeDiscovery, apiV1Handler(s1, ns, discoveryHandler(s1), discAuth))
+		mux.Handle(routeDiscovery+"/", apiV1Handler(s1, ns, discoveryWildcardHandler(s1), discAuth))
+	}
+
+	// MCP (Model Context Protocol) API
+	// Transport is implicit: HTTP service uses SSE/HTTP, CLI uses stdio via RunMCPStdio()
+	// Auth: Uses same auth middleware as GraphQL/REST endpoints
+	if !s.conf.mcpDisabled() {
+		s.registerMCPOAuthMetadataRoutes(mux)
+		mcpAuth, err := s.newMCPAuthHandler()
+		if err != nil {
+			s.log.Fatalf("api: error initializing MCP auth handler: %s", err)
+		}
+		// SSE transport for web-based integrations (with auth)
+		mux.Handle(routeMCP, s1.MCPHandlerWithAuth(mcpAuth))
+		// HTTP transport for stateless API integrations (with auth)
+		mux.Handle(routeMCPMsg, s1.MCPMessageHandlerWithAuth(mcpAuth))
+	}
+
+	// Built-in OIDC login endpoints (only if auth_login.enabled)
+	if s.authLogin != nil {
+		s.authLogin.routes(mux)
 	}
 
 	return setServerHeader(mux), nil
-}
-
-func setActionRoutes(s1 *Service, mux *http.ServeMux) error {
-	var zlog *zap.Logger
-	var err error
-	s := s1.Load().(*service)
-
-	if s.conf.Core.Debug {
-		zlog = s.zlog
-	}
-
-	for i, a := range s.conf.Serv.Actions {
-		var fn http.Handler
-
-		fn, err = newAction(s1, &s.conf.Serv.Actions[i])
-		if err != nil {
-			break
-		}
-
-		p := path.Join(actionRoute, strings.ToLower(a.Name))
-		h := fn
-
-		if s.conf.telemetryEnabled() {
-			h = ochttp.WithRouteTag(h, p)
-		}
-
-		if ac := findAuth(s, a.AuthName); ac != nil {
-			h, err = auth.WithAuth(h, ac, zlog)
-		}
-
-		if err != nil {
-			return err
-		}
-
-		mux.Handle(p, h)
-	}
-	return nil
 }

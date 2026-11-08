@@ -1,23 +1,27 @@
 package qcode
 
-import (
-	"strings"
-
-	"github.com/gobuffalo/flect"
-)
+import "strings"
 
 type Config struct {
-	Vars             map[string]string
-	TConfig          map[string]TConfig
-	FragmentFetcher  func(name string) (string, error)
-	DefaultBlock     bool
-	DefaultLimit     int
-	DisableAgg       bool
-	DisableFuncs     bool
-	EnableCamelcase  bool
-	EnableInflection bool
-	DBSchema         string
-	defTrv           trval
+	Vars            map[string]string
+	TConfig         map[string]TConfig
+	DefaultBlock    bool
+	DefaultLimit    int
+	AnalyticsMode   bool
+	DisableAgg      bool
+	DisableFuncs    bool
+	EnableCamelcase bool
+	DBSchema        string
+	Validators      map[string]Validator
+
+	// EnableCacheTracking injects __gj_id fields with primary keys for cache row tracking
+	EnableCacheTracking bool
+
+	// UnionRoles treats a role name joined with "+" as the union of its
+	// component roles and merges their table rules.
+	UnionRoles bool
+
+	defTrv trval
 }
 
 type TConfig struct {
@@ -68,11 +72,13 @@ type DeleteConfig struct {
 
 type trval struct {
 	role string
+	set  bool
 
 	query struct {
 		limit   int32
 		fil     *Exp
 		filNU   bool
+		filKey  string
 		cols    map[string]struct{}
 		disable struct{ funcs bool }
 		block   bool
@@ -87,6 +93,7 @@ type trval struct {
 	update struct {
 		fil     *Exp
 		filNU   bool
+		filKey  string
 		cols    map[string]struct{}
 		presets map[string]string
 		block   bool
@@ -95,34 +102,37 @@ type trval struct {
 	upsert struct {
 		fil     *Exp
 		filNU   bool
+		filKey  string
 		cols    map[string]struct{}
 		presets map[string]string
 		block   bool
 	}
 
 	delete struct {
-		fil   *Exp
-		filNU bool
-		cols  map[string]struct{}
-		block bool
+		fil    *Exp
+		filNU  bool
+		filKey string
+		cols   map[string]struct{}
+		block  bool
 	}
 }
 
 func (co *Compiler) AddRole(role, schema, table string, trc TRConfig) error {
 	var err error
 
-	ti, err := co.s.Find(schema, table)
+	ti, err := co.Find(schema, table)
 	if err != nil {
 		return err
 	}
 
-	trv := trval{role: role}
+	trv := trval{role: role, set: true}
 
 	// query config
 	trv.query.fil, trv.query.filNU, err = compileFilter(co.s, ti, trc.Query.Filters, false)
 	if err != nil {
 		return err
 	}
+	trv.query.filKey = filterKey(trc.Query.Filters)
 
 	if trc.Query.Limit > 0 {
 		trv.query.limit = int32(trc.Query.Limit)
@@ -141,15 +151,17 @@ func (co *Compiler) AddRole(role, schema, table string, trc TRConfig) error {
 	if err != nil {
 		return err
 	}
+	trv.update.filKey = filterKey(trc.Update.Filters)
 	trv.update.cols = makeSet(trc.Update.Columns)
 	trv.update.presets = trc.Update.Presets
 	trv.update.block = trc.Update.Block
 
 	// upsert config
-	trv.upsert.fil, trv.update.filNU, err = compileFilter(co.s, ti, trc.Upsert.Filters, false)
+	trv.upsert.fil, trv.upsert.filNU, err = compileFilter(co.s, ti, trc.Upsert.Filters, false)
 	if err != nil {
 		return err
 	}
+	trv.upsert.filKey = filterKey(trc.Upsert.Filters)
 	trv.upsert.cols = makeSet(trc.Upsert.Columns)
 	trv.upsert.presets = trc.Upsert.Presets
 	trv.upsert.block = trc.Upsert.Block
@@ -159,30 +171,29 @@ func (co *Compiler) AddRole(role, schema, table string, trc TRConfig) error {
 	if err != nil {
 		return err
 	}
+	trv.delete.filKey = filterKey(trc.Delete.Filters)
 	trv.delete.cols = makeSet(trc.Delete.Columns)
 	trv.delete.block = trc.Delete.Block
 
-	if schema == "" {
-		schema = co.s.DBSchema()
-	}
-
-	if co.c.EnableInflection {
-		singular := flect.Singularize(table)
-		plural := flect.Pluralize(table)
-		co.tr[(role + ":" + schema + ":" + singular)] = trv
-		co.tr[(role + ":" + schema + ":" + plural)] = trv
-	} else {
-		co.tr[(role + ":" + schema + ":" + table)] = trv
-	}
+	co.tr[(role + ":" + ti.Schema + ":" + ti.Name)] = trv
 
 	return nil
 }
 
 func (co *Compiler) getRole(role, schema, table, field string) trval {
+	if co.c.UnionRoles && strings.Contains(role, unionRoleSeparator) {
+		return co.getUnionRole(role, schema, table, field)
+	}
+
 	var k string
 
 	if co.s.IsAlias(field) {
-		k = (role + ":" + schema + ":" + field)
+		// Resolve alias to underlying table name to match how AddRole stores it
+		if ti, err := co.s.Find(schema, field); err == nil {
+			k = (role + ":" + ti.Schema + ":" + ti.Name)
+		} else {
+			k = (role + ":" + schema + ":" + field)
+		}
 	} else {
 		k = (role + ":" + schema + ":" + table)
 	}
@@ -213,6 +224,8 @@ func (trv *trval) filter(qt QType) (*Exp, bool) {
 		return trv.upsert.fil, trv.upsert.filNU
 	case QTDelete:
 		return trv.delete.fil, trv.delete.filNU
+	case QTOpenAPICall:
+		return nil, false
 	}
 	return nil, false
 }
@@ -223,6 +236,10 @@ func (trv *trval) columnAllowed(qt *QCode, name string) bool {
 		_, ok := trv.query.cols[name]
 		return ok || len(trv.query.cols) == 0
 	case QTInsert:
+		if qt.InsertConflictAction == ConflictGet {
+			_, ok := trv.query.cols[name]
+			return ok || len(trv.query.cols) == 0
+		}
 		_, ok := trv.insert.cols[name]
 		return ok || len(trv.insert.cols) == 0
 	case QTUpdate:
@@ -234,6 +251,9 @@ func (trv *trval) columnAllowed(qt *QCode, name string) bool {
 	case QTDelete:
 		_, ok := trv.delete.cols[name]
 		return ok || len(trv.delete.cols) == 0
+	case QTOpenAPICall:
+		_, ok := trv.query.cols[name]
+		return ok || len(trv.query.cols) == 0
 	}
 	return false
 }
@@ -257,8 +277,14 @@ func (trv *trval) isBlocked(qt QType) bool {
 		return trv.upsert.block
 	case QTDelete:
 		return trv.delete.block
+	case QTOpenAPICall:
+		return false
 	}
 	return false
+}
+
+func (trv *trval) allowsBlockedTable(qt QType) bool {
+	return trv.set && trv.role == "__graphjin_internal_store" && !trv.isBlocked(qt)
 }
 
 func (trv *trval) isFuncsBlocked() bool {
@@ -290,16 +316,23 @@ func (trv *trval) getPresets(mt MType) map[string]string {
 		return trv.insert.presets
 	case MTUpdate:
 		return trv.update.presets
-
+	case MTUpsert:
+		return trv.upsert.presets
 	}
 	return nil
+}
+
+// filterKey identifies a role filter by its source text, so union merges can
+// tell whether two roles apply the same row filter.
+func filterKey(filters []string) string {
+	return strings.Join(filters, "\x1f")
 }
 
 func makeSet(list []string) map[string]struct{} {
 	m := make(map[string]struct{}, len(list))
 
 	for i := range list {
-		m[strings.ToLower(list[i])] = struct{}{}
+		m[list[i]] = struct{}{}
 	}
 	return m
 }
