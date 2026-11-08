@@ -145,6 +145,7 @@ func TestOpenAPIWhereOrderAndPagingAreApplied(t *testing.T) {
 }
 
 func TestOpenAPIRowJoinWhereNullsNonMatchingObject(t *testing.T) {
+	skipSingularSelection(t, "the query selects a single row by key")
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/projects/") {
 			http.NotFound(w, r)

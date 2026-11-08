@@ -790,6 +790,14 @@ func (co *Compiler) compileQuery(qc *QCode, op *graph.Operation, role string) er
 			sel.SkipRender = SkipTypeUserNeeded
 		}
 
+		// Singular detection must see the final where clause, role filters included.
+		// Queries only: subscriptions read rows as arrays when they poll, so they keep
+		// upstream's behaviour.
+		if qc.SType == QTQuery && !sel.Singular && SingularByConstraintsApplies(co.s.DBType()) &&
+			isSingularByConstraints(sel.Ti, sel.Rel, sel.Where.Exp, sel.Paging) {
+			sel.Singular = true
+		}
+
 		// Check partition key filter: inject default or warn
 		co.checkPartitionFilter(qc, sel)
 

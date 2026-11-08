@@ -52,7 +52,9 @@ func (gj *graphjinEngine) discoverDatabase(ctx *dbContext) error {
 			ctx.dbinfo = cached
 			return nil
 		}
-		if legacy, legacyErr := gj.loadRuntimeSchemaDDL(ctx); legacyErr == nil {
+		if !runtimeSchemaDDLUsable(ctx.dbtype) {
+			// fall through to live discovery
+		} else if legacy, legacyErr := gj.loadRuntimeSchemaDDL(ctx); legacyErr == nil {
 			ctx.dbinfo = legacy
 			return nil
 		}
@@ -102,7 +104,7 @@ func (gj *graphjinEngine) discoverDatabase(ctx *dbContext) error {
 	dbinfo, err := introspection.GetDBInfo(context.Background(), ctx.db, ctx.dbtype, gj.conf.Blocklist)
 	if err != nil {
 		cached, cacheErr := gj.loadRuntimeSchemaSnapshot(ctx)
-		if cacheErr != nil {
+		if cacheErr != nil && runtimeSchemaDDLUsable(ctx.dbtype) {
 			cached, cacheErr = gj.loadRuntimeSchemaDDL(ctx)
 		}
 		if cacheErr == nil {
@@ -131,6 +133,14 @@ func (gj *graphjinEngine) discoverDatabase(ctx *dbContext) error {
 	}
 
 	return nil
+}
+
+// runtimeSchemaDDLUsable reports whether the DDL cache may stand in for live
+// discovery. The DDL carries no unique-index metadata, which the singular rule
+// for MySQL/MariaDB needs, so for those databases a snapshot that cannot be
+// loaded (missing, or an older format version) forces live discovery instead.
+func runtimeSchemaDDLUsable(dbType string) bool {
+	return !qcode.SingularByConstraintsApplies(dbType)
 }
 
 func (gj *graphjinEngine) loadRuntimeSchemaSnapshot(ctx *dbContext) (*sdata.DBInfo, error) {

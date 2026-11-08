@@ -20,7 +20,11 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-const discoveryGenerationFormatVersion = 1
+// discoveryGenerationFormatVersion versions the on-disk generation, including
+// the schema snapshots inside it. Version 2: DBTable.UniqueIndices was added.
+// A generation written by an older build is incompatible, so it is ignored and
+// rebuilt from live discovery instead of being served without index metadata.
+const discoveryGenerationFormatVersion = 2
 
 type discoveryGenerationFile struct {
 	Name   string `json:"name"`

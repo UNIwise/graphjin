@@ -19,6 +19,7 @@ import (
 // file-content half — every benchmark model composed this shape correctly and
 // nothing in CI proved the engine kept honoring it.
 func TestMixedRootDBPlusFilesystemContent(t *testing.T) {
+	skipSingularSelection(t, "the query selects a single row by key")
 	root := t.TempDir()
 	policy := "Urgent tickets: resolve within 4 hours.\nHigh tickets: resolve within 24 hours.\n"
 	if err := os.MkdirAll(filepath.Join(root, "support"), 0o755); err != nil {

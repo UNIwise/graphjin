@@ -7,7 +7,10 @@ import (
 	"strings"
 )
 
-const dbInfoSnapshotVersion = 1
+// Version 2 added DBTable.UniqueIndices. Snapshots written without it must be
+// rejected so discovery runs again; loading one would silently change which
+// selections are singular.
+const dbInfoSnapshotVersion = 2
 
 // dbInfoSnapshot is the durable, full-fidelity representation of discovery
 // metadata. Lookup maps and derived table slices are rebuilt when loading.

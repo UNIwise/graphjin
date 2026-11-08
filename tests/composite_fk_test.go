@@ -155,6 +155,7 @@ func TestCompositeFKAllRowsMatch(t *testing.T) {
 // TestCompositeFKReverseJoin tests the reverse direction: querying
 // product_variants and getting their associated order_items.
 func TestCompositeFKReverseJoin(t *testing.T) {
+	skipSingularSelection(t, "the query selects a single row by key")
 	if dbType == "mongodb" || dbType == "cassandra" || dbType == "clickhouse" {
 		t.Skipf("skipping composite FK test for %s", dbType)
 	}

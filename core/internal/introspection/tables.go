@@ -89,6 +89,7 @@ func getDBInfoOnce(
 	var compositeFKs []CompositeFKInfo
 	var snowflakeClustering map[string][]string
 	var cassandraKeys map[string]cassandraKeyInfo
+	var uniqueIndexes map[string][][]string
 
 	g, gctx := errgroup.WithContext(ctx)
 
@@ -161,6 +162,17 @@ func getDBInfoOnce(
 		})
 	}
 
+	if dbType == "mysql" || dbType == "mariadb" {
+		g.Go(func() error {
+			// Fatal on purpose: without index metadata singular detection would
+			// silently fall back and change response shapes.
+			var err error
+			uniqueIndexes, err = discoverUniqueIndexes(gctx, db)
+
+			return err
+		})
+	}
+
 	g.Go(func() error {
 		var err error
 		if cols, err = DiscoverColumns(gctx, db, dbType, blockList); err != nil {
@@ -209,6 +221,13 @@ func getDBInfoOnce(
 		funcs,
 		blockList)
 	di.CompositeFKs = compositeFKs
+
+	// MySQL and MariaDB: attach unique and primary key index column sets.
+	if len(uniqueIndexes) != 0 {
+		for i := range di.Tables {
+			di.Tables[i].UniqueIndices = uniqueIndexes[di.Tables[i].Schema+":"+di.Tables[i].Name]
+		}
+	}
 
 	// For Snowflake, discover clustering keys and attach to tables.
 	// Non-fatal: if this fails we just skip clustering optimization.

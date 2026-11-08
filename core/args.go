@@ -47,7 +47,7 @@ func (gj *graphjinEngine) argList(c context.Context,
 
 	for i, p := range params {
 		switch p.Name {
-		case "user_id", "userID", "userId":
+		case "user_id":
 			if v := c.Value(UserIDKey); v != nil {
 				switch v1 := v.(type) {
 				case string:
@@ -63,14 +63,14 @@ func (gj *graphjinEngine) argList(c context.Context,
 				return ar, argErr(p)
 			}
 
-		case "user_id_raw", "userIDRaw", "userIdRaw":
+		case "user_id_raw":
 			if v := c.Value(UserIDRawKey); v != nil {
 				vl[i] = v.(string)
 			} else {
 				return ar, argErr(p)
 			}
 
-		case "user_id_provider", "userIDProvider", "userIdProvider":
+		case "user_id_provider":
 			if v := c.Value(UserIDProviderKey); v != nil {
 				vl[i] = v.(string)
 			} else {

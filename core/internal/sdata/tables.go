@@ -35,9 +35,12 @@ type DBTable struct {
 	Type       string
 	// Database is the name of the database this table belongs to (for multi-database support).
 	// Empty string means the default database.
-	Database             string
-	Columns              []DBColumn
-	PrimaryCols          []DBColumn
+	Database    string
+	Columns     []DBColumn
+	PrimaryCols []DBColumn
+	// UniqueIndices holds the column set of every unique and primary key index.
+	// Only MySQL and MariaDB fill it; elsewhere the per-column flags are used.
+	UniqueIndices        [][]string
 	PrimaryCol           DBColumn // backward compat: alias for PrimaryCols[0]
 	SecondaryCol         DBColumn
 	FullText             []DBColumn

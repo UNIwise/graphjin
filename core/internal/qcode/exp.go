@@ -88,9 +88,7 @@ func (co *Compiler) compileExpNode(
 
 		if ex.Right.ValType == ValVar {
 			v := ex.Right.Val
-			needsUser = (v == "user_id" || v == "userID" || v == "userId" ||
-				v == "user_id_raw" || v == "userIDRaw" || v == "userIdRaw" ||
-				v == "user_id_provider" || v == "userIDProvider" || v == "userIdProvider")
+			needsUser = isIdentityVariable(v)
 		}
 
 		switch {

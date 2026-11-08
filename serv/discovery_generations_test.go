@@ -115,3 +115,58 @@ func TestDiscoveryRedisScopeChangesWithSchemaFingerprint(t *testing.T) {
 		t.Fatalf("schema fingerprints share Redis coordination scope %q", managerA.prefix)
 	}
 }
+
+// A generation written before UniqueIndices existed (format version 1) must be
+// ignored, so the schema is discovered again instead of being served without
+// the index metadata the singular rule needs.
+func TestDiscoveryGenerationFromAnOlderFormatIsIgnored(t *testing.T) {
+	fs := newAferoFS(afero.NewMemMapFs(), "/")
+	service := &graphjinService{conf: &Config{Serv: Serv{DiscoveryCache: DiscoveryCacheConfig{Path: ".graphjin/discovery"}}}, fs: fs}
+	manager := &discoveryGenerationManager{service: service, base: ".graphjin/discovery", fingerprint: "fingerprint"}
+	id := "20260714T000000.000000000Z-old"
+	fileData := []byte(`{"version":1,"tables":[]}`)
+	sum := sha256.Sum256(fileData)
+
+	write := func(formatVersion int) {
+		t.Helper()
+
+		manifest := discoveryGenerationManifest{
+			FormatVersion: formatVersion,
+			GenerationID:  id,
+			Fingerprint:   "fingerprint",
+			SourceRevisions: map[string]string{
+				core.DefaultDBName: hex.EncodeToString(sum[:]),
+			},
+			Files: []discoveryGenerationFile{{Name: "default.schema.json", Size: len(fileData), SHA256: hex.EncodeToString(sum[:])}},
+		}
+		manifestData, _ := json.Marshal(manifest)
+
+		receiptData, _ := json.Marshal(discoveryActivationReceipt{FormatVersion: formatVersion, GenerationID: id, Fingerprint: "fingerprint"})
+
+		for name, data := range map[string][]byte{
+			path.Join(manager.generationDir(id), "default.schema.json"): fileData,
+			manager.manifestPath(id):                                    manifestData,
+			path.Join(".graphjin/discovery", "activations", id+".json"): receiptData,
+		} {
+			if err := fs.Put(name, data); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	write(discoveryGenerationFormatVersion)
+
+	if _, err := manager.newestReceipt(); err != nil {
+		t.Fatalf("current format must load: %v", err)
+	}
+
+	write(discoveryGenerationFormatVersion - 1)
+
+	if _, err := manager.loadGeneration(id); err == nil {
+		t.Error("a generation from an older format must not load")
+	}
+
+	if _, err := manager.newestReceipt(); err == nil {
+		t.Error("a receipt from an older format must not be honoured")
+	}
+}

@@ -1249,6 +1249,18 @@ func skipClickHouse(t *testing.T, reason string) {
 	}
 }
 
+// skipSingularSelection skips a test whose expectation is an array for a selection
+// that a single row satisfies. On MySQL and MariaDB this fork returns a single
+// object for such a selection (core/internal/qcode/singular.go): an explicit
+// `limit: 1`, or a where clause and join that cover a unique or primary key. The
+// expectations were written for upstream's behaviour, which is an array.
+func skipSingularSelection(t *testing.T, reason string) {
+	t.Helper()
+	if dbType == "mysql" || dbType == "mariadb" {
+		t.Skipf("%s: single-object selection (%s)", dbType, reason)
+	}
+}
+
 // skipMariaDBNestedLimit skips a test whose expectation depends on `limit`
 // being applied to a nested plural child. MariaDB has no LATERAL, so
 // MariaDBDialect.RenderInlineChild renders a correlated child as a bare

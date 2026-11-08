@@ -10,6 +10,7 @@ import (
 )
 
 func TestQueryParentAndChildrenViaArrayColumn(t *testing.T) {
+	skipSingularSelection(t, "the query selects a single row by key")
 	skipCassandra(t, "array/collection columns are not seeded in the cassandra fixture")
 	skipClickHouse(t, "array/collection columns are not seeded in the fixture")
 	if dbType == "mssql" {
@@ -125,6 +126,7 @@ func TestInsertIntoTableAndConnectToRelatedTableWithArrayColumn(t *testing.T) {
 }
 
 func TestVeryComplexQueryWithArrayColumns(t *testing.T) {
+	skipSingularSelection(t, "the query selects a single row by key")
 	skipCassandra(t, "array/collection columns are not seeded in the cassandra fixture")
 	skipClickHouse(t, "array/collection columns are not seeded in the fixture")
 	if dbType == "mssql" {
