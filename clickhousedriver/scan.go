@@ -42,7 +42,7 @@ func scanRows(rows *sql.Rows) ([]map[string]any, error) {
 // pointers (Nullable) and rendering time/bytes/Stringer types stably.
 func normalizeValue(v any) any {
 	rv := reflect.ValueOf(v)
-	if rv.Kind() == reflect.Ptr {
+	if rv.Kind() == reflect.Pointer {
 		if rv.IsNil() {
 			return nil
 		}

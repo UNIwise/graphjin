@@ -145,7 +145,7 @@ func fetchAgentStatus(ctx context.Context, client HTTPDoer, baseURL string, head
 	if err != nil {
 		return AgentStatus{}, fmt.Errorf("read agent status: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	if err != nil {
 		return AgentStatus{}, err
@@ -213,10 +213,6 @@ var candidateFamilies = []candidateFamily{
 		Generate:     generateRowUpdateCandidates,
 	},
 }
-
-// v12Families names the families that composed the frozen public suite. The
-// content-ID stability guard replays exactly these.
-var v12Families = []string{"catalog-core", "deeporg-reference"}
 
 // selectedFamilies returns the families named in want, in registry order. An
 // empty want selects every family, which is what every production caller does;
@@ -892,13 +888,14 @@ func generateDeepORGCandidates(snapshot CatalogSnapshot, seed int64) []Task {
 		for index, root := range []string{"invoices", "support_tickets", "accounts", "payments"} {
 			name := fmt.Sprintf("deeporg_reference_%s_%d", root, index+1)
 			fields, cursor := "id", root+"_cursor"
-			if root == "invoices" {
+			switch root {
+			case "invoices":
 				fields = "id status attempts"
-			} else if root == "support_tickets" {
+			case "support_tickets":
 				fields = "id status severity"
-			} else if root == "accounts" {
+			case "accounts":
 				fields = "id status renewal_date"
-			} else if root == "payments" {
+			case "payments":
 				fields = "id reference amount_cents"
 			}
 			subscription := fmt.Sprintf(`subscription %s { %s(first: 25, after: $cursor) { %s } %s }`, name, root, fields, cursor)

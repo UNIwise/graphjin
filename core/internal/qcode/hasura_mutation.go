@@ -140,8 +140,8 @@ func (co *Compiler) rewriteHasuraMutationRoot(
 	seenNative := make(map[string]bool)
 	sawInput := false
 	for _, arg := range root.Args {
-		switch {
-		case arg.Name == "where":
+		switch arg.Name {
+		case "where":
 			if byPK {
 				return plan, unsupported("where and pk_columns cannot be combined; a _by_pk root is addressed by its primary key")
 			}
@@ -159,7 +159,7 @@ func (co *Compiler) rewriteHasuraMutationRoot(
 			}
 			args = append(args, arg)
 
-		case arg.Name == "pk_columns":
+		case "pk_columns":
 			if !byPK {
 				return plan, unsupported("pk_columns is only valid on a _by_pk root; use where instead")
 			}
@@ -169,7 +169,7 @@ func (co *Compiler) rewriteHasuraMutationRoot(
 			}
 			args = append(args, graph.Arg{Name: "where", Val: where})
 
-		case arg.Name == "on_conflict":
+		case "on_conflict":
 			return plan, unsupported("on_conflict is not supported; use the native upsert argument")
 
 		default:
@@ -322,6 +322,6 @@ func hasuraMutationSupportError(requestedRoot, baseName, verb, detail string) er
 		supported = fmt.Sprintf("%s(where: {<column>: {_eq: <value>}}) { returning { <column> } affected_rows }", requestedRoot)
 		native = fmt.Sprintf("%s(delete: true, where: {<column>: {eq: <value>}}) { <column> }", baseName)
 	}
-	return fmt.Errorf("Hasura-compatible mutation root %q: %s. Supported form: %s. Native equivalent: %s",
+	return fmt.Errorf("hasura-compatible mutation root %q: %s. Supported form: %s. Native equivalent: %s",
 		requestedRoot, detail, supported, native)
 }

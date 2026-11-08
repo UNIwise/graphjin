@@ -417,7 +417,7 @@ func TestAdventureWorksCompositeFKJoin(t *testing.T) {
 		WHERE salesorderid = 43664
 		ORDER BY productid ASC LIMIT 3`)
 	require.NoError(t, err)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var expected []fkPair
 	for rows.Next() {
@@ -653,7 +653,7 @@ func TestAdventureWorksLargeDatasetFilter(t *testing.T) {
 		ORDER BY unitprice DESC, salesorderid ASC, productid ASC
 		LIMIT 5`)
 	require.NoError(t, err)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var expected []detailRow
 	for rows.Next() {
@@ -1177,7 +1177,7 @@ func TestAdventureWorksCreditCardAnalysis(t *testing.T) {
 		JOIN sales.creditcard cc ON soh.creditcardid = cc.creditcardid
 		ORDER BY soh.subtotal DESC LIMIT 3`)
 	require.NoError(t, err)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var expected []ccRow
 	for rows.Next() {
 		var r ccRow
@@ -1244,7 +1244,7 @@ func TestAdventureWorksSalesReasonAttribution(t *testing.T) {
 		WHERE sosr.salesorderid = $1
 		ORDER BY sr.name`, orderID)
 	require.NoError(t, err)
-	defer reasonRows.Close()
+	defer func() { _ = reasonRows.Close() }()
 	type reasonInfo struct {
 		Name       string
 		ReasonType string
@@ -1375,7 +1375,7 @@ func TestAdventureWorksCustomerGeography(t *testing.T) {
 		WHERE c.personid IS NOT NULL
 		ORDER BY c.customerid LIMIT 3`)
 	require.NoError(t, err)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var expected []custGeo
 	for rows.Next() {
 		var cg custGeo

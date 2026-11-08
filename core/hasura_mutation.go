@@ -46,7 +46,7 @@ func reshapeHasuraMutationData(data []byte, plans []qcode.HasuraMutationRoot) ([
 		// a list — unless the caller wrapped it in returning, which is a list
 		// in every Hasura response.
 		if plan.Single && !plan.Returning && !plan.AffectedRows {
-			var single json.RawMessage = json.RawMessage("null")
+			var single = json.RawMessage("null")
 			if len(rows) != 0 {
 				single = rows[0]
 			}

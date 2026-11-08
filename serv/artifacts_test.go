@@ -27,7 +27,7 @@ func TestArtifactControlPlaneInitializesAndScopesRowsByUser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	autoInit := true
 	conf := &Config{Core: core.Config{
@@ -37,7 +37,7 @@ func TestArtifactControlPlaneInitializesAndScopesRowsByUser(t *testing.T) {
 		Artifacts: core.ArtifactsConfig{Enabled: true, Source: "app", AutoInit: &autoInit, GlobalsPath: "."},
 	}}
 	conf.ConfigPath = tmp
-	if err := conf.Core.NormalizeSources(); err != nil {
+	if err := conf.NormalizeSources(); err != nil {
 		t.Fatalf("NormalizeSources: %v", err)
 	}
 	svc := &graphjinService{
@@ -139,7 +139,7 @@ func TestArtifactMigrationAddsReservedColumnsIdempotently(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	if _, err := db.Exec(`CREATE TABLE "_graphjin_artifacts" (
 id TEXT PRIMARY KEY,
@@ -189,7 +189,7 @@ func TestArtifactLockedKindsBlockWritePaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	svc := newSQLiteArtifactService(t, db, dsn, []string{"query"})
 	if err := svc.initArtifactsBeforeCore(); err != nil {
 		t.Fatalf("initArtifactsBeforeCore: %v", err)
@@ -215,7 +215,7 @@ func TestArtifactLockedKindsBlockDelete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	svc := newSQLiteArtifactService(t, db, dsn, nil)
 	if err := svc.initArtifactsBeforeCore(); err != nil {
 		t.Fatalf("initArtifactsBeforeCore: %v", err)
@@ -226,7 +226,7 @@ func TestArtifactLockedKindsBlockDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("save artifact: %v", err)
 	}
-	svc.conf.Core.Artifacts.Locked = []string{"saved_query"}
+	svc.conf.Artifacts.Locked = []string{"saved_query"}
 	if err := svc.deleteUserArtifact(ctx, artifactKindSavedQuery, "delete_me"); !isArtifactKindLocked(err) {
 		t.Fatalf("overlay locked delete error = %v, want artifactPolicyError", err)
 	}
@@ -273,7 +273,7 @@ func newSQLiteArtifactService(t *testing.T, db *sql.DB, dsn string, locked []str
 		Artifacts: core.ArtifactsConfig{Enabled: true, Source: "app", AutoInit: &autoInit, GlobalsPath: ".", Locked: locked},
 	}}
 	conf.ConfigPath = t.TempDir()
-	if err := conf.Core.NormalizeSources(); err != nil {
+	if err := conf.NormalizeSources(); err != nil {
 		t.Fatalf("NormalizeSources: %v", err)
 	}
 	return &graphjinService{
@@ -286,7 +286,7 @@ func newSQLiteArtifactService(t *testing.T, db *sql.DB, dsn string, locked []str
 func startSQLiteArtifactCore(t *testing.T, svc *graphjinService, db *sql.DB) {
 	t.Helper()
 	svc.metadataDB = "app"
-	svc.conf.Core.FS = svc.fs
+	svc.conf.FS = svc.fs
 	svc.injectInternalStoreRole()
 	artifacts := newArtifactControlPlane(svc)
 	revisions := revisionSignalHandler{service: svc}

@@ -130,7 +130,7 @@ func fetchDiscovery(ctx context.Context, issuerURL string) (discovery, error) {
 	if err != nil {
 		return discovery{}, fmt.Errorf("oidc discovery: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
 		return discovery{}, fmt.Errorf("oidc discovery: %s: %s", resp.Status, strings.TrimSpace(string(b)))

@@ -17,10 +17,10 @@ import (
 func TestSourceRootsAccessEnforcedOnDirectGraphQL(t *testing.T) {
 	configure := func(artifactsEnabled bool) func(*Config) {
 		return func(conf *Config) {
-			conf.Core.Mode = "agentic"
-			conf.Core.Artifacts.Enabled = artifactsEnabled
-			conf.Core.System.RootAccess = map[string]string{"gj_config": core.AccessModeAdmin}
-			conf.Core.System.Capabilities = map[string]bool{"config.read": true}
+			conf.Mode = "agentic"
+			conf.Artifacts.Enabled = artifactsEnabled
+			conf.System.RootAccess = map[string]string{"gj_config": core.AccessModeAdmin}
+			conf.System.Capabilities = map[string]bool{"config.read": true}
 		}
 	}
 
@@ -68,9 +68,9 @@ func TestSourceRootsAccessEnforcedOnDirectGraphQL(t *testing.T) {
 func TestSourceRootsAccessAuthenticatedOverrideAllowsUser(t *testing.T) {
 	svc := newControlPlaneGraphQLTestServiceWithConfig(t, MCPConfig{},
 		createSQLiteDBFile(t, "roots-access-authenticated.sqlite3", true), func(conf *Config) {
-			conf.Core.Mode = "agentic"
-			conf.Core.System.RootAccess = map[string]string{"gj_config": core.AccessModeAuthenticated}
-			conf.Core.System.Capabilities = map[string]bool{"config.read": true}
+			conf.Mode = "agentic"
+			conf.System.RootAccess = map[string]string{"gj_config": core.AccessModeAuthenticated}
+			conf.System.Capabilities = map[string]bool{"config.read": true}
 		})
 
 	res, err := svc.gj.GraphQL(sourceModeUserTestContext(), `query { gj_config(id: "current") { id } }`, nil, &core.RequestConfig{})
@@ -123,7 +123,7 @@ func TestSourceRootsAccessReplacesGeneratedRuntimeDefaults(t *testing.T) {
 		t.Fatalf("expected access.roots admin to replace stale generated allow with block, got %+v", rt)
 	}
 
-	conf.Core.Roles = []core.Role{{
+	conf.Roles = []core.Role{{
 		Name: "user",
 		Tables: []core.RoleTable{{
 			Name:     "gj_config",
@@ -131,7 +131,7 @@ func TestSourceRootsAccessReplacesGeneratedRuntimeDefaults(t *testing.T) {
 			Query:    &core.Query{Block: false},
 		}},
 	}}
-	runtimeCore = &core.Config{Roles: conf.Core.Roles}
+	runtimeCore = &core.Config{Roles: conf.Roles}
 	applySystemRoleQueryDefaults(conf, runtimeCore, "graphjin")
 	rt, ok = roleTableFor(runtimeCore, "user", "gj_config", "graphjin")
 	if !ok {

@@ -139,10 +139,6 @@ func (h controlPlaneGraphQL) queryCatalog(ctx context.Context, root core.Managed
 	return h.queryCatalogRowsFromSnapshotContext(ctx, snap, root), nil
 }
 
-func (h controlPlaneGraphQL) queryCatalogRowsFromSnapshot(snap *core.CatalogSnapshot, root core.ManagedQueryRoot) []map[string]any {
-	return h.queryCatalogRowsFromSnapshotContext(context.Background(), snap, root)
-}
-
 func (h controlPlaneGraphQL) queryCatalogRowsFromSnapshotContext(ctx context.Context, snap *core.CatalogSnapshot, root core.ManagedQueryRoot) []map[string]any {
 	search, where := splitSearchWhere(root.Where)
 	if search == "" {
@@ -1031,109 +1027,6 @@ func firstPayloadError(payload map[string]any) string {
 	return "config update failed"
 }
 
-func (h controlPlaneGraphQL) reloadSchema(root core.ManagedMutationRoot) (map[string]any, error) {
-	if !h.service.conf.MCP.AllowSchemaReload {
-		return nil, fmt.Errorf("schema reload is not allowed; enable mcp.allow_schema_reload")
-	}
-	row := map[string]any{"id": stableID("schema_reload", time.Now().String())}
-	if h.service.gj == nil {
-		row["reloaded"] = false
-		row["error"] = "GraphJin engine is not initialized"
-		h.service.recordRuntimeEvent(context.Background(), runtimeEvent{
-			Phase:      "schema",
-			Status:     runtimeStatusFailed,
-			Severity:   "warn",
-			Summary:    "GraphQL schema reload was blocked because GraphJin is not initialized.",
-			NextAction: "Fix configuration or database connectivity before retrying schema reload.",
-			ErrorCode:  "schema_reload_blocked",
-		})
-		return row, nil
-	}
-	database, _ := root.Input["database"].(string)
-	reload, err := h.service.reloadSchema(context.Background(), database)
-	if err != nil {
-		errText := redactRuntimeError(err)
-		row["reloaded"] = false
-		row["error"] = errText
-		h.service.recordRuntimeEvent(context.Background(), runtimeEvent{
-			Phase:      "schema",
-			Status:     runtimeStatusFailed,
-			Severity:   "error",
-			Summary:    "GraphQL schema reload failed.",
-			NextAction: "Inspect database connectivity and schema discovery errors before retrying.",
-			ErrorCode:  "schema_reload_failed",
-			Details:    map[string]any{"error": errText, "database": strings.TrimSpace(database)},
-		})
-		return row, nil
-	}
-	row["reloaded"] = true
-	row["reload_mode"] = reload.Mode
-	if reload.Database != "" {
-		row["database"] = reload.Database
-	}
-	if reload.CatalogRevision != "" {
-		row["catalog_revision"] = reload.CatalogRevision
-	}
-	h.service.recordRuntimeEvent(context.Background(), runtimeEvent{
-		Phase:           "schema",
-		Status:          runtimeStatusReady,
-		Severity:        "info",
-		Summary:         "GraphQL schema reload completed.",
-		NextAction:      "Refresh catalog-guided planning before using newly discovered tables or relationships.",
-		DatabaseName:    reload.Database,
-		CatalogRevision: reload.CatalogRevision,
-		Details: map[string]any{
-			"catalog_revision": reload.CatalogRevision,
-			"database":         reload.Database,
-			"reload_mode":      reload.Mode,
-			"table_count":      len(reload.Tables),
-		},
-	})
-	return row, nil
-}
-
-func (h controlPlaneGraphQL) schemaChangeSet(ctx context.Context, root core.ManagedMutationRoot) (map[string]any, error) {
-	if !h.service.conf.MCP.AllowSchemaUpdates {
-		return nil, fmt.Errorf("schema changes are not allowed; enable mcp.allow_schema_updates")
-	}
-	input := root.Input
-	action := strings.ToLower(stringFrom(input, "action"))
-	if action == "" {
-		action = "preview"
-	}
-	args := map[string]any{
-		"schema":      stringFrom(input, "schema"),
-		"database":    stringFrom(input, "database"),
-		"destructive": boolFrom(input, "destructive"),
-	}
-	ms := &mcpServer{service: h.service, ctx: ctx}
-	var res *mcp.CallToolResult
-	var err error
-	if action == "apply" {
-		res, err = ms.handleApplySchemaChanges(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: args}})
-	} else {
-		res, err = ms.handlePreviewSchemaChanges(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: args}})
-	}
-	payload := mcpResultPayload(res, err)
-	row := map[string]any{
-		"id":           stableID("schema_change", action, args["database"], args["schema"]),
-		"action":       action,
-		"schema":       args["schema"],
-		"database":     args["database"],
-		"destructive":  args["destructive"],
-		"preview_json": mustMarshalString(payload),
-		"applied":      action == "apply" && payload["success"] != false,
-		"errors_json":  mustMarshalString(payload["errors"]),
-	}
-	if row["applied"] == true {
-		h.service.markCatalogChanged("schema change set")
-	}
-	if snap, err := h.service.catalogSnapshot(); err == nil {
-		row["catalog_revision"] = snap.Revision
-	}
-	return row, nil
-}
-
 func (h controlPlaneGraphQL) validateQueryWhere(root core.ManagedMutationRoot) (map[string]any, error) {
 	input := root.Input
 	table := stringFrom(input, "table")
@@ -1184,24 +1077,6 @@ func (h controlPlaneGraphQL) validateQueryWhere(root core.ManagedMutationRoot) (
 		"errors_json":   mustMarshalString(errors),
 		"warnings_json": mustMarshalString(compileResult.Warnings),
 	}, nil
-}
-
-func (h controlPlaneGraphQL) repairQuery(root core.ManagedMutationRoot) map[string]any {
-	input := root.Input
-	query := stringFrom(input, "query")
-	errText := stringFrom(input, "error")
-	ms := &mcpServer{service: h.service}
-	repair := buildFixQueryErrorRepair(query, errText, ms.analyticsModeOn())
-	return map[string]any{
-		"id":                   stableID("repair", query, errText),
-		"query":                query,
-		"error":                errText,
-		"kind":                 repair.Kind,
-		"diagnosis":            repair.Diagnosis,
-		"fixed_query":          repair.RepairedQuery,
-		"explanation_json":     mustMarshalString(repair),
-		"follow_up_tools_json": mustMarshalString(repair.FollowUpTools),
-	}
 }
 
 func structRows[T any](items []T) []map[string]any {
@@ -1495,14 +1370,6 @@ func stringFrom(m map[string]interface{}, key string) string {
 	return strings.TrimSpace(s)
 }
 
-func boolFrom(m map[string]interface{}, key string) bool {
-	if m == nil {
-		return false
-	}
-	b, _ := m[key].(bool)
-	return b
-}
-
 func stringFromWhere(where map[string]interface{}, key string) string {
 	if where == nil {
 		return ""
@@ -1551,7 +1418,7 @@ func stringSliceFrom(v any) []string {
 func stableID(parts ...any) string {
 	h := sha256.New()
 	for _, part := range parts {
-		_, _ = h.Write([]byte(fmt.Sprint(part)))
+		_, _ = fmt.Fprint(h, part)
 		_, _ = h.Write([]byte{0})
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]

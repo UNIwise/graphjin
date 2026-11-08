@@ -55,7 +55,7 @@ func TestCassandraEndToEnd(t *testing.T) {
 	}
 
 	db := sql.OpenDB(cassandradriver.NewConnector(s, "gje2e"))
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	conf := &core.Config{
 		DBType:           "cassandra",

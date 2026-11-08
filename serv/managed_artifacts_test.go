@@ -118,7 +118,7 @@ database:
 	if svc.managedArtifactDB == "" {
 		t.Fatal("managed runtime database name was not allocated")
 	}
-	if _, public := svc.conf.Core.Databases[svc.managedArtifactDB]; public {
+	if _, public := svc.conf.Databases[svc.managedArtifactDB]; public {
 		t.Fatal("managed store leaked into public database configuration")
 	}
 	if _, runtime := svc.runtimeCore.Databases[svc.managedArtifactDB]; !runtime {

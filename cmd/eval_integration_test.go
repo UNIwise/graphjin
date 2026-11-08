@@ -519,7 +519,7 @@ func evalIntegrationGraphQL(baseURL string, headers map[string]string, query str
 	if err != nil {
 		return nil, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	return io.ReadAll(response.Body)
 }
 

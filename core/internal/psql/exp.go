@@ -53,10 +53,7 @@ func (c *expContext) render(ex *qcode.Exp) {
 	st := util.NewStackInf()
 	st.Push(ex)
 
-	for {
-		if st.Len() == 0 {
-			break
-		}
+	for st.Len() != 0 {
 
 		intf := st.Pop()
 
@@ -284,11 +281,9 @@ func (c *expContext) renderOp(ex *qcode.Exp) {
 			c.err = err
 			return
 		}
+		// An empty opStr means the op renders nothing here.
 		if opStr != "" {
 			c.w.WriteString(opStr)
-		} else {
-			// If not handled, logic error or unknown op?
-			// Just ignore or error?
 		}
 	}
 	c.w.WriteString(` `)
@@ -303,10 +298,7 @@ func (c *expContext) renderOp(ex *qcode.Exp) {
 }
 
 func (c *expContext) renderValPrefix(ex *qcode.Exp) bool {
-	if c.dialect.RenderValPrefix(c, ex) {
-		return true
-	}
-	return false
+	return c.dialect.RenderValPrefix(c, ex)
 }
 
 func (c *expContext) renderVal(ex *qcode.Exp) {

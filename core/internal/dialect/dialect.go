@@ -19,8 +19,10 @@ type Param struct {
 }
 
 type Context interface {
-	Write(s string) (int, error)
-	WriteString(s string) (int, error) // io.StringWriter
+	// Write and WriteString append to an in-memory buffer, which cannot fail,
+	// so they deliberately return nothing.
+	Write(s string)
+	WriteString(s string)
 	AddParam(p Param) string
 
 	// Helpers commonly used by dialects

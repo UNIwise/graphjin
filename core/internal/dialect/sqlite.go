@@ -1106,14 +1106,6 @@ func (d *SQLiteDialect) RenderLinearConnect(ctx Context, m *qcode.Mutate, qc *qc
 	}
 }
 
-// Helper to get first key from a map
-func getFirstKey(m map[int32]struct{}) int32 {
-	for k := range m {
-		return k
-	}
-	return -1
-}
-
 func (d *SQLiteDialect) RenderLinearDisconnect(ctx Context, m *qcode.Mutate, qc *qcode.QCode, varName string, renderFilter func()) {
 	// Logic from mutate.go lines 516+
 	var childCol, parentCol string

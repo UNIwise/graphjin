@@ -92,7 +92,7 @@ func (c *axSemanticEmbeddingClient) Embed(ctx context.Context, texts []string, d
 		return nil, c.initErr
 	}
 	if c == nil || c.client == nil {
-		return nil, errors.New("Ax embedding client is not initialized")
+		return nil, errors.New("ax embedding client is not initialized")
 	}
 	items := make([]ax.Value, len(texts))
 	for i := range texts {
@@ -111,11 +111,11 @@ func (c *axSemanticEmbeddingClient) Embed(ctx context.Context, texts []string, d
 	}
 	object, ok := value.(map[string]any)
 	if !ok {
-		return nil, fmt.Errorf("Ax embedding response has type %T, want object", value)
+		return nil, fmt.Errorf("ax embedding response has type %T, want object", value)
 	}
 	raw, ok := object["embeddings"]
 	if !ok {
-		return nil, errors.New("Ax embedding response is missing embeddings")
+		return nil, errors.New("ax embedding response is missing embeddings")
 	}
 	rows, err := semanticEmbeddingRows(raw)
 	if err != nil {
@@ -125,7 +125,7 @@ func (c *axSemanticEmbeddingClient) Embed(ctx context.Context, texts []string, d
 	for i, row := range rows {
 		vector, err := semanticFloat32Vector(row)
 		if err != nil {
-			return nil, fmt.Errorf("Ax embedding %d: %w", i, err)
+			return nil, fmt.Errorf("ax embedding %d: %w", i, err)
 		}
 		out[i] = vector
 	}
@@ -142,7 +142,7 @@ func semanticEmbeddingRows(value any) ([]any, error) {
 		}
 		return []any(values.Items), nil
 	default:
-		return nil, fmt.Errorf("Ax embeddings have type %T, want array", value)
+		return nil, fmt.Errorf("ax embeddings have type %T, want array", value)
 	}
 }
 

@@ -82,7 +82,7 @@ func evalSampleCmd(opts *evalCLIOptions) *cobra.Command {
 				return &evalExitError{Code: 2, Err: err}
 			}
 			if sampling.Temperature == nil && os.Getenv("GJ_AGENT_TEMPERATURE") == "" {
-				fmt.Fprintln(cmd.ErrOrStderr(),
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(),
 					"  note: no temperature configured, so every repeat of a task will draw the same program; "+
 						"pass --temperature (or set GJ_AGENT_TEMPERATURE) to collect attempts that differ.")
 			}
@@ -248,23 +248,23 @@ func printEvalSampleSummary(cmd *cobra.Command, report *gjeval.Report, store *gj
 	if side != "" {
 		where = "the " + side + " side"
 	}
-	fmt.Fprintf(out, "Collected %d attempt(s) across %d task(s) from %s; %d passed.\n",
+	_, _ = fmt.Fprintf(out, "Collected %d attempt(s) across %d task(s) from %s; %d passed.\n",
 		total, len(report.Tasks), where, passed)
 	for _, item := range rows {
-		fmt.Fprintf(out, "  %-44s %d/%d  mean reward %.3f\n", item.slug, item.passed, item.count, item.reward)
+		_, _ = fmt.Fprintf(out, "  %-44s %d/%d  mean reward %.3f\n", item.slug, item.passed, item.count, item.reward)
 	}
 	if total != 0 {
-		fmt.Fprintf(out, "Passed at least once %.3f of tasks, every time %.3f.\n",
+		_, _ = fmt.Fprintf(out, "Passed at least once %.3f of tasks, every time %.3f.\n",
 			report.Metrics.PassAtK, report.Metrics.PassPowerK)
 	}
 	if store != nil {
-		fmt.Fprintf(out, "Episodes: %s\n", filepath.Join(store.Root, "episodes", report.RunID))
+		_, _ = fmt.Fprintf(out, "Episodes: %s\n", filepath.Join(store.Root, "episodes", report.RunID))
 	}
-	fmt.Fprintf(out, "Next: graphjin eval export %s", report.RunID)
+	_, _ = fmt.Fprintf(out, "Next: graphjin eval export %s", report.RunID)
 	if side != "" {
-		fmt.Fprintf(out, " --side %s", side)
+		_, _ = fmt.Fprintf(out, " --side %s", side)
 	}
-	fmt.Fprintln(out, " --stage executor")
+	_, _ = fmt.Fprintln(out, " --stage executor")
 }
 
 func evalSampleInvocationArgs(opts *evalCLIOptions, projectPath string, repeats int, side string) []string {

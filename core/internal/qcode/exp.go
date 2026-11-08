@@ -65,10 +65,7 @@ func (co *Compiler) compileExpNode(
 		node: node,
 	})
 
-	for {
-		if st.Len() == 0 {
-			break
-		}
+	for st.Len() != 0 {
 
 		intf := st.Pop()
 

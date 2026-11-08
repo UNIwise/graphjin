@@ -213,7 +213,7 @@ func TestCoffeeRoasteryDemoConfigNormalizes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read coffee demo config: %v", err)
 	}
-	if err := cfg.Core.NormalizeSources(); err != nil {
+	if err := cfg.NormalizeSources(); err != nil {
 		t.Fatalf("normalize coffee demo sources: %v", err)
 	}
 
@@ -232,7 +232,7 @@ func TestCoffeeRoasteryDemoConfigNormalizes(t *testing.T) {
 	if got := cfg.Databases["roast_warehouse"].Path; got != "" {
 		t.Fatalf("roast_warehouse path = %q, want empty canonical DDL discovery", got)
 	}
-	rootAccess := cfg.Core.EffectiveSystemRootAccess()
+	rootAccess := cfg.EffectiveSystemRootAccess()
 	for _, root := range []string{"gj_catalog", "gj_artifacts", "gj_workflow", "gj_workflow_execution", "gj_runtime", "gj_security"} {
 		if got := rootAccess[root]; got != core.AccessModePublic {
 			t.Fatalf("system %s root access = %q, want public in dev demo", root, got)
@@ -250,7 +250,7 @@ func TestCoffeeRoasteryMinimalAgenticConfigResolvesRuntimeDefaults(t *testing.T)
 	if err != nil {
 		t.Fatalf("read coffee demo agentic config: %v", err)
 	}
-	if err := cfg.Core.NormalizeSources(); err != nil {
+	if err := cfg.NormalizeSources(); err != nil {
 		t.Fatalf("normalize coffee demo sources: %v", err)
 	}
 
@@ -275,8 +275,8 @@ func TestCoffeeRoasteryMinimalAgenticConfigResolvesRuntimeDefaults(t *testing.T)
 	if !cfg.MCP.IncludeToolsWithAgent {
 		t.Fatalf("MCP runtime defaults missing: %+v", cfg.MCP)
 	}
-	if !cfg.Core.Artifacts.Enabled || cfg.Core.Artifacts.Source == "__graphjin_artifacts" || !cfg.Core.Watches.Enabled || cfg.Core.Watches.Runner != "all" {
-		t.Fatalf("artifact/watch runtime defaults missing: artifacts=%+v watches=%+v", cfg.Core.Artifacts, cfg.Core.Watches)
+	if !cfg.Artifacts.Enabled || cfg.Artifacts.Source == "__graphjin_artifacts" || !cfg.Watches.Enabled || cfg.Watches.Runner != "all" {
+		t.Fatalf("artifact/watch runtime defaults missing: artifacts=%+v watches=%+v", cfg.Artifacts, cfg.Watches)
 	}
 	data, err := os.ReadFile("../examples/coffee-roastery/agentic.yml")
 	if err != nil {
@@ -317,8 +317,8 @@ func TestDemoConfigsKeepZeroConfigurationDefaultsMinimal(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ReadInConfig: %v", err)
 			}
-			if !cfg.Agent.Enabled || !cfg.MCP.IncludeToolsWithAgent || !cfg.Core.Artifacts.Enabled || !cfg.Core.Watches.Enabled || cfg.Core.Watches.Runner != "all" {
-				t.Fatalf("minimal config did not resolve complete runtime: agent=%+v mcp=%+v artifacts=%+v watches=%+v", cfg.Agent, cfg.MCP, cfg.Core.Artifacts, cfg.Core.Watches)
+			if !cfg.Agent.Enabled || !cfg.MCP.IncludeToolsWithAgent || !cfg.Artifacts.Enabled || !cfg.Watches.Enabled || cfg.Watches.Runner != "all" {
+				t.Fatalf("minimal config did not resolve complete runtime: agent=%+v mcp=%+v artifacts=%+v watches=%+v", cfg.Agent, cfg.MCP, cfg.Artifacts, cfg.Watches)
 			}
 		})
 	}

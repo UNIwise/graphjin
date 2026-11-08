@@ -245,10 +245,10 @@ func (c *Conn) executeAggregate(ctx context.Context, q *QueryDSL) (driver.Rows, 
 	// Collect all results into a JSON array
 	var results []bson.M
 	if err := cursor.All(ctx, &results); err != nil {
-		cursor.Close(ctx)
+		_ = cursor.Close(ctx)
 		return nil, fmt.Errorf("mongodriver: aggregate results: %w", err)
 	}
-	cursor.Close(ctx)
+	_ = cursor.Close(ctx)
 
 	// Extract cursor value before transforming results
 	var cursorValue string
@@ -407,10 +407,10 @@ func (c *Conn) executeMultiAggregate(ctx context.Context, q *QueryDSL) (driver.R
 		// Collect all results
 		var results []bson.M
 		if err := cursor.All(ctx, &results); err != nil {
-			cursor.Close(ctx)
+			_ = cursor.Close(ctx)
 			return nil, fmt.Errorf("mongodriver: aggregate results on %s: %w", subQ.Collection, err)
 		}
-		cursor.Close(ctx)
+		_ = cursor.Close(ctx)
 
 		// Extract cursor value before transforming results
 		var cursorValue string
@@ -605,10 +605,10 @@ func (c *Conn) executeFind(ctx context.Context, q *QueryDSL) (driver.Rows, error
 	// Collect all results
 	var results []bson.M
 	if err := cursor.All(ctx, &results); err != nil {
-		cursor.Close(ctx)
+		_ = cursor.Close(ctx)
 		return nil, fmt.Errorf("mongodriver: find results: %w", err)
 	}
-	cursor.Close(ctx)
+	_ = cursor.Close(ctx)
 
 	jsonBytes, err := json.Marshal(results)
 	if err != nil {
@@ -719,10 +719,10 @@ func (c *Conn) executeInsertOneAsQuery(ctx context.Context, q *QueryDSL) (driver
 
 		var results []bson.M
 		if err := cursor.All(ctx, &results); err != nil {
-			cursor.Close(ctx)
+			_ = cursor.Close(ctx)
 			return nil, fmt.Errorf("mongodriver: aggregate results: %w", err)
 		}
-		cursor.Close(ctx)
+		_ = cursor.Close(ctx)
 
 		if len(results) > 0 {
 			finalDoc = results[0]
@@ -839,10 +839,10 @@ func (c *Conn) executeInsertManyAsQuery(ctx context.Context, q *QueryDSL) (drive
 		}
 
 		if err := cursor.All(ctx, &finalDocs); err != nil {
-			cursor.Close(ctx)
+			_ = cursor.Close(ctx)
 			return nil, fmt.Errorf("mongodriver: aggregate results: %w", err)
 		}
-		cursor.Close(ctx)
+		_ = cursor.Close(ctx)
 	} else {
 		// No return_pipeline, just fetch the inserted documents
 		cursor, err := coll.Find(ctx, bson.M{"_id": bson.M{"$in": result.InsertedIDs}})
@@ -851,10 +851,10 @@ func (c *Conn) executeInsertManyAsQuery(ctx context.Context, q *QueryDSL) (drive
 		}
 
 		if err := cursor.All(ctx, &finalDocs); err != nil {
-			cursor.Close(ctx)
+			_ = cursor.Close(ctx)
 			return nil, fmt.Errorf("mongodriver: cursor results: %w", err)
 		}
-		cursor.Close(ctx)
+		_ = cursor.Close(ctx)
 	}
 
 	// Translate _id back to id for all documents
@@ -936,10 +936,10 @@ func (c *Conn) executeUpdateOneAsQuery(ctx context.Context, q *QueryDSL) (driver
 
 		var results []bson.M
 		if err := cursor.All(ctx, &results); err != nil {
-			cursor.Close(ctx)
+			_ = cursor.Close(ctx)
 			return nil, fmt.Errorf("mongodriver: aggregate results: %w", err)
 		}
-		cursor.Close(ctx)
+		_ = cursor.Close(ctx)
 
 		if len(results) > 0 {
 			finalDoc = results[0]
@@ -1127,10 +1127,10 @@ func (c *Conn) executeNestedInsert(ctx context.Context, q *QueryDSL) (driver.Row
 			}
 
 			if err := cursor.All(ctx, &results); err != nil {
-				cursor.Close(ctx)
+				_ = cursor.Close(ctx)
 				return nil, fmt.Errorf("mongodriver: cursor all: %w", err)
 			}
-			cursor.Close(ctx)
+			_ = cursor.Close(ctx)
 		} else {
 			// No return_pipeline, just fetch all documents
 			cursor, err := coll.Find(ctx, bson.M{"_id": bson.M{"$in": allIDs}})
@@ -1139,10 +1139,10 @@ func (c *Conn) executeNestedInsert(ctx context.Context, q *QueryDSL) (driver.Row
 			}
 
 			if err := cursor.All(ctx, &results); err != nil {
-				cursor.Close(ctx)
+				_ = cursor.Close(ctx)
 				return nil, fmt.Errorf("mongodriver: cursor all: %w", err)
 			}
-			cursor.Close(ctx)
+			_ = cursor.Close(ctx)
 		}
 
 		// Build a map for quick lookup by ID
@@ -1205,10 +1205,10 @@ func (c *Conn) executeNestedInsert(ctx context.Context, q *QueryDSL) (driver.Row
 
 			var results []bson.M
 			if err := cursor.All(ctx, &results); err != nil {
-				cursor.Close(ctx)
+				_ = cursor.Close(ctx)
 				return nil, fmt.Errorf("mongodriver: aggregate results: %w", err)
 			}
-			cursor.Close(ctx)
+			_ = cursor.Close(ctx)
 
 			if len(results) > 0 {
 				finalDoc = results[0]
@@ -1267,13 +1267,11 @@ func (c *Conn) executeNestedUpdate(ctx context.Context, q *QueryDSL) (driver.Row
 	// This is needed because children may need to be filtered by parent's FK values
 	var rootFilter bson.M
 	var rootDoc bson.M
-	var rootMutateID int = -1
 
 	// Find the root mutation and fetch its document
 	for _, upd := range q.Updates {
 		if upd.ParentID == -1 && upd.Type == "update" {
 			rootFilter = translateFieldsInMap(upd.Filter)
-			rootMutateID = upd.ID
 
 			// Fetch the root document to get FK values
 			coll := c.db.Collection(upd.Collection)
@@ -1283,7 +1281,7 @@ func (c *Conn) executeNestedUpdate(ctx context.Context, q *QueryDSL) (driver.Row
 
 			// Store the root document ID
 			if id, ok := rootDoc["_id"]; ok {
-				updatedIDs[rootMutateID] = id
+				updatedIDs[upd.ID] = id
 			}
 			break
 		}
@@ -1437,10 +1435,10 @@ func (c *Conn) executeNestedUpdate(ctx context.Context, q *QueryDSL) (driver.Row
 
 		var results []bson.M
 		if err := cursor.All(ctx, &results); err != nil {
-			cursor.Close(ctx)
+			_ = cursor.Close(ctx)
 			return nil, fmt.Errorf("mongodriver: aggregate results: %w", err)
 		}
-		cursor.Close(ctx)
+		_ = cursor.Close(ctx)
 
 		if len(results) > 0 {
 			finalDoc = results[0]
@@ -1606,10 +1604,10 @@ func (c *Conn) executeDeleteOneAsQuery(ctx context.Context, q *QueryDSL) (driver
 
 		var results []bson.M
 		if err := cursor.All(ctx, &results); err != nil {
-			cursor.Close(ctx)
+			_ = cursor.Close(ctx)
 			return nil, fmt.Errorf("mongodriver: aggregate results before delete: %w", err)
 		}
-		cursor.Close(ctx)
+		_ = cursor.Close(ctx)
 		if len(results) > 0 {
 			finalDoc = results[0]
 		}

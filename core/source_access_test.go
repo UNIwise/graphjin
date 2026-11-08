@@ -143,7 +143,7 @@ func TestSourceModeBlockedTableReturnsUnauthorized(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	db.SetMaxOpenConns(1)
 	if _, err := db.Exec(`CREATE TABLE internal_events (id INTEGER PRIMARY KEY, account_id TEXT)`); err != nil {
 		t.Fatal(err)
@@ -182,7 +182,7 @@ func TestSourceModeAccountVariableMustComeFromIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	db.SetMaxOpenConns(1)
 	if _, err := db.Exec(`CREATE TABLE users (id INTEGER PRIMARY KEY, account_id TEXT);
 INSERT INTO users (id, account_id) VALUES (1, 'acct_1'), (2, 'acct_2')`); err != nil {

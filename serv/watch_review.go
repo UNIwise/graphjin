@@ -670,7 +670,6 @@ func (s *graphjinService) pauseWatchForReview(ctx context.Context, row map[strin
 		if reloadErr != nil || stringMapValue(current, "updated_at") != now {
 			return reloadErr
 		}
-		rows = []map[string]any{current}
 	}
 	if err := s.bumpArtifactRevision(ctx, "watches"); err != nil {
 		return err

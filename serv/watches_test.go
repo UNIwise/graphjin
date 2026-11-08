@@ -204,7 +204,7 @@ func TestWatchControlPlaneInitializesScopesAndUpdatesEvents(t *testing.T) {
 
 func TestWatchProjectionLoadsPastGraphQLDefaultLimit(t *testing.T) {
 	db, svc := newSQLiteWatchService(t, 10)
-	svc.conf.Core.DefaultLimit = 2
+	svc.conf.DefaultLimit = 2
 	if err := svc.initArtifactsBeforeCore(); err != nil {
 		t.Fatalf("initArtifactsBeforeCore: %v", err)
 	}
@@ -370,8 +370,8 @@ func TestValidateWatchCycleDetectsCycleBeyondFirstPage(t *testing.T) {
 
 func TestPruneWatchEventsEnforcesCapBeyondFirstPage(t *testing.T) {
 	db, svc := newSQLiteWatchServiceWithOptions(t, 20, func(conf *Config) {
-		conf.Core.DefaultLimit = 5
-		conf.Core.Watches.MaxEventsPerWatch = 3
+		conf.DefaultLimit = 5
+		conf.Watches.MaxEventsPerWatch = 3
 	})
 	if err := svc.initArtifactsBeforeCore(); err != nil {
 		t.Fatalf("initArtifactsBeforeCore: %v", err)
@@ -949,7 +949,7 @@ func savedQueryArtifactNames(t *testing.T, db *sql.DB) []string {
 	if err != nil {
 		t.Fatalf("query saved query artifacts: %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var names []string
 	for rows.Next() {
 		var name string
@@ -1139,7 +1139,7 @@ func TestWatchCleanupSweepsOrphanedSavedQueryArtifacts(t *testing.T) {
 
 func TestSweepWatchEventsPrunesExpiredAndOrphanedRows(t *testing.T) {
 	db, svc := newSQLiteWatchService(t, 20)
-	svc.conf.Core.Watches.EventRetentionHours = 1
+	svc.conf.Watches.EventRetentionHours = 1
 	if err := svc.initArtifactsBeforeCore(); err != nil {
 		t.Fatalf("initArtifactsBeforeCore: %v", err)
 	}
@@ -1171,8 +1171,8 @@ func TestSweepWatchEventsPrunesExpiredAndOrphanedRows(t *testing.T) {
 
 func TestSweepWatchEventsKeepsEventsOfWatchesBeyondFirstPage(t *testing.T) {
 	db, svc := newSQLiteWatchServiceWithOptions(t, 20, func(conf *Config) {
-		conf.Core.DefaultLimit = 5
-		conf.Core.Watches.EventRetentionHours = 1
+		conf.DefaultLimit = 5
+		conf.Watches.EventRetentionHours = 1
 	})
 	if err := svc.initArtifactsBeforeCore(); err != nil {
 		t.Fatalf("initArtifactsBeforeCore: %v", err)
@@ -1196,8 +1196,8 @@ func TestSweepWatchEventsKeepsEventsOfWatchesBeyondFirstPage(t *testing.T) {
 
 func TestSweepWatchEventsSkipsOrphanCleanupWhenWatchScanEmpty(t *testing.T) {
 	db, svc := newSQLiteWatchServiceWithOptions(t, 20, func(conf *Config) {
-		conf.Core.DefaultLimit = 5
-		conf.Core.Watches.EventRetentionHours = 1
+		conf.DefaultLimit = 5
+		conf.Watches.EventRetentionHours = 1
 	})
 	if err := svc.initArtifactsBeforeCore(); err != nil {
 		t.Fatalf("initArtifactsBeforeCore: %v", err)
@@ -1247,7 +1247,7 @@ func TestWatchRunnerSkipsPersistForDeletedWatch(t *testing.T) {
 
 func TestWatchRunnerCapsStoredSnapshotButHashesFullData(t *testing.T) {
 	db, svc := newSQLiteWatchService(t, 20)
-	svc.conf.Core.Watches.SnapshotMaxBytes = 96
+	svc.conf.Watches.SnapshotMaxBytes = 96
 	if err := svc.initArtifactsBeforeCore(); err != nil {
 		t.Fatalf("initArtifactsBeforeCore: %v", err)
 	}
@@ -1289,8 +1289,8 @@ func TestWatchRunnerCapsStoredSnapshotButHashesFullData(t *testing.T) {
 	if !truncated {
 		t.Fatal("large watch event should be marked truncated")
 	}
-	if len(storedJSON) > svc.conf.Core.Watches.SnapshotMaxBytes {
-		t.Fatalf("stored snapshot length = %d, want <= %d: %s", len(storedJSON), svc.conf.Core.Watches.SnapshotMaxBytes, storedJSON)
+	if len(storedJSON) > svc.conf.Watches.SnapshotMaxBytes {
+		t.Fatalf("stored snapshot length = %d, want <= %d: %s", len(storedJSON), svc.conf.Watches.SnapshotMaxBytes, storedJSON)
 	}
 	var envelope map[string]any
 	if err := json.Unmarshal([]byte(storedJSON), &envelope); err != nil {
@@ -1320,7 +1320,7 @@ func TestWatchDeliveryWebhookAllowlistSignatureAndStatus(t *testing.T) {
 		_, _ = w.Write([]byte(`accepted`))
 	}))
 	defer hook.Close()
-	svc.conf.Core.Watches.WebhookAllow = []string{hook.URL}
+	svc.conf.Watches.WebhookAllow = []string{hook.URL}
 	t.Setenv("WATCH_WEBHOOK_SECRET", "top-secret")
 
 	cp := newWatchControlPlane(svc)
@@ -1393,7 +1393,7 @@ func TestWatchWebhookDenyByDefault(t *testing.T) {
 	if _, err := svc.validateWatchWebhookURL(context.Background(), "https://hooks.example.com/watch"); err == nil || !strings.Contains(err.Error(), "webhook_allow") {
 		t.Fatalf("expected deny-by-default webhook error, got %v", err)
 	}
-	svc.conf.Core.Watches.WebhookAllow = []string{"hooks.example.com"}
+	svc.conf.Watches.WebhookAllow = []string{"hooks.example.com"}
 	if _, err := svc.validateWatchWebhookURL(context.Background(), "https://hooks.example.com/watch"); err == nil || !strings.Contains(err.Error(), "webhook_allow") {
 		t.Fatalf("bare host allowlist should not match; got %v", err)
 	}
@@ -1421,12 +1421,12 @@ func TestWatchWebhookSecurityPolicyFlagsUnsafeAllowlist(t *testing.T) {
 	if row.Status != securityStatusFinding || row.EffectiveAllowed {
 		t.Fatalf("empty watch webhook allowlist should be a finding, got status=%q effective=%v", row.Status, row.EffectiveAllowed)
 	}
-	conf.Core.Watches.WebhookAllow = []string{"hooks.example.com"}
+	conf.Watches.WebhookAllow = []string{"hooks.example.com"}
 	row = watchWebhookSecurityPolicyForTest(t, conf)
 	if row.Status != securityStatusFinding || row.EffectiveAllowed {
 		t.Fatalf("bare host watch webhook allowlist should be a finding, got status=%q effective=%v", row.Status, row.EffectiveAllowed)
 	}
-	conf.Core.Watches.WebhookAllow = []string{"https://hooks.example.com"}
+	conf.Watches.WebhookAllow = []string{"https://hooks.example.com"}
 	row = watchWebhookSecurityPolicyForTest(t, conf)
 	if row.Status != securityStatusPass || !row.EffectiveAllowed {
 		t.Fatalf("exact origin watch webhook allowlist should pass, got status=%q effective=%v", row.Status, row.EffectiveAllowed)
@@ -1582,7 +1582,7 @@ func TestWatchEnrichmentRequiresServerModelCredentials(t *testing.T) {
 
 func TestWatchEnrichmentDailyCapSkipStillDelivers(t *testing.T) {
 	db, svc := newSQLiteWatchService(t, 20)
-	svc.conf.Core.Watches.EnrichmentDailyCap = 1
+	svc.conf.Watches.EnrichmentDailyCap = 1
 	if err := svc.initArtifactsBeforeCore(); err != nil {
 		t.Fatalf("initArtifactsBeforeCore: %v", err)
 	}
@@ -1691,7 +1691,7 @@ func TestWatchRunnerOwnerContextCarriesTrustedIdentity(t *testing.T) {
 
 func TestWatchRunnerDowngradesUnknownStoredOwnerRole(t *testing.T) {
 	_, svc := newSQLiteWatchService(t, 20)
-	svc.conf.Core.Roles = []core.Role{{Name: "analyst"}}
+	svc.conf.Roles = []core.Role{{Name: "analyst"}}
 	if got := svc.trustedWatchRunnerRole("analyst"); got != "analyst" {
 		t.Fatalf("configured watch runner role = %q, want analyst", got)
 	}
@@ -1802,7 +1802,7 @@ func TestEphemeralWatchLeaseLifecycleAndExpiry(t *testing.T) {
 
 func TestWatchCleanupPreviewAndApplyScopesDurableDeletion(t *testing.T) {
 	db, svc := newSQLiteWatchService(t, 20)
-	svc.conf.Core.Watches.EventRetentionHours = 1
+	svc.conf.Watches.EventRetentionHours = 1
 	if err := svc.initArtifactsBeforeCore(); err != nil {
 		t.Fatalf("initArtifactsBeforeCore: %v", err)
 	}
@@ -2185,7 +2185,7 @@ func TestWatchMigrationAddsOwnerRole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	if _, err := db.Exec(`CREATE TABLE "_graphjin_watches" (
 id TEXT PRIMARY KEY,
 name TEXT NOT NULL,
@@ -2305,7 +2305,7 @@ func TestUpsertWatchRejectsOversizedDefinitionJSON(t *testing.T) {
 func newPaginationWatchTestService(t *testing.T) (*sql.DB, *graphjinService) {
 	t.Helper()
 	return newSQLiteWatchServiceWithOptions(t, 20, func(conf *Config) {
-		conf.Core.DefaultLimit = 5
+		conf.DefaultLimit = 5
 	})
 }
 
@@ -2360,7 +2360,7 @@ func newSQLiteWatchServiceWithOptions(
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	return newSQLiteWatchServiceWithDBAndOptions(t, db, dsn, maxPerOwner, configure)
 }
 
@@ -2392,7 +2392,7 @@ func newSQLiteWatchServiceWithDBAndOptions(
 	if configure != nil {
 		configure(conf)
 	}
-	if err := conf.Core.NormalizeSources(); err != nil {
+	if err := conf.NormalizeSources(); err != nil {
 		t.Fatalf("NormalizeSources: %v", err)
 	}
 	return db, &graphjinService{
@@ -2405,7 +2405,7 @@ func newSQLiteWatchServiceWithDBAndOptions(
 func startSQLiteWatchCore(t *testing.T, svc *graphjinService, db *sql.DB) {
 	t.Helper()
 	svc.metadataDB = "app"
-	svc.conf.Core.FS = svc.fs
+	svc.conf.FS = svc.fs
 	svc.injectInternalStoreRole()
 	artifacts := newArtifactControlPlane(svc)
 	watches := newWatchControlPlane(svc)
@@ -2504,7 +2504,7 @@ func watchEventIDs(t *testing.T, db *sql.DB) []string {
 	if err != nil {
 		t.Fatalf("query watch event ids: %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var ids []string
 	for rows.Next() {
 		var id string

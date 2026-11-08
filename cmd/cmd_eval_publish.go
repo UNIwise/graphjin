@@ -283,9 +283,10 @@ func runEvalPublish(cmd *cobra.Command, evalOpts *evalCLIOptions, opts *evalPubl
 
 	comparisonSuite := data.Suite
 	currentPublicSuite := ""
-	if benchmark.Slug == defaultBenchmarkSlug {
+	switch benchmark.Slug {
+	case defaultBenchmarkSlug:
 		currentPublicSuite = gjeval.PublicBenchmark().SuiteFingerprint
-	} else if benchmark.Slug == DeepContosoBenchmarkSlug {
+	case DeepContosoBenchmarkSlug:
 		currentPublicSuite = DeepContosoBenchmarkSuiteFingerprint
 	}
 	advancingCohort := currentPublicSuite != "" && report.SuiteFingerprint == currentPublicSuite &&
@@ -429,7 +430,7 @@ func runEvalPublish(cmd *cobra.Command, evalOpts *evalCLIOptions, opts *evalPubl
 	if err := atomicWritePublicFile(pagePath, page); err != nil {
 		return err
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Published benchmark data: %s\nPublished run page: %s\nReview and commit these files.\n", dataPath, pagePath)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Published benchmark data: %s\nPublished run page: %s\nReview and commit these files.\n", dataPath, pagePath)
 	return nil
 }
 

@@ -27,7 +27,7 @@ func (c *Config) legacyDiscoveryEnabled() bool {
 	if c == nil {
 		return false
 	}
-	if !c.Core.IsSourcesUsed() {
+	if !c.IsSourcesUsed() {
 		return true
 	}
 	return c.effectiveFeatureCapability(featurecap.KindSystem, featurecap.KeyLegacyDiscoveryRead)
@@ -37,7 +37,7 @@ func (c *Config) catalogToolsEnabled() bool {
 	if c == nil {
 		return false
 	}
-	return c.Core.CatalogEnabled() && c.agenticSurfaceEnabled()
+	return c.CatalogEnabled() && c.agenticSurfaceEnabled()
 }
 
 func (c *Config) mcpDisabled() bool {
@@ -47,7 +47,7 @@ func (c *Config) mcpDisabled() bool {
 	if effectiveMode(c) == modeProd {
 		// Source mode: prod hard-gates the agentic surface (security model); the
 		// MCP server never mounts there, even if explicitly enabled.
-		if c.Core.IsSourcesUsed() {
+		if c.IsSourcesUsed() {
 			return true
 		}
 		// Legacy (non-sources) prod keeps the long-standing escape hatch: MCP is
@@ -92,24 +92,24 @@ func (c *Config) runtimeRootRegistered() bool {
 }
 
 func (c *Config) artifactSourceReadOnly() bool {
-	if c == nil || !c.Core.Artifacts.Enabled {
+	if c == nil || !c.Artifacts.Enabled {
 		return false
 	}
-	source, ok := c.Core.SourceByName(c.Core.EffectiveArtifactsConfig().Source)
+	source, ok := c.SourceByName(c.Core.EffectiveArtifactsConfig().Source)
 	return ok && source.ReadOnly
 }
 
 func (c *Config) needsSystemHostDB() bool {
-	if c == nil || !c.Core.IsSourcesUsed() {
+	if c == nil || !c.IsSourcesUsed() {
 		return false
 	}
-	if c.Core.Artifacts.Enabled {
+	if c.Artifacts.Enabled {
 		return true
 	}
 	if c.catalogToolsEnabled() || c.systemControlPlaneEnabled() || c.runtimeRootRegistered() || c.workflowsEnabled() {
 		return true
 	}
-	for _, source := range c.Core.Sources {
+	for _, source := range c.Sources {
 		switch source.CanonicalKind() {
 		case sourcecap.KindFile, sourcecap.KindAPI:
 			return true
@@ -122,13 +122,13 @@ func validateServiceIsSourcesUsedConfig(conf *Config) error {
 	if conf == nil {
 		return nil
 	}
-	if conf.Core.Watches.Enabled && !conf.Core.Artifacts.Enabled {
+	if conf.Watches.Enabled && !conf.Artifacts.Enabled {
 		return fmt.Errorf("watches require artifacts.enabled")
 	}
 	if err := validateServiceTasksConfig(conf); err != nil {
 		return err
 	}
-	if !conf.Core.IsSourcesUsed() {
+	if !conf.IsSourcesUsed() {
 		if isCodeSQLType(conf.DB.Type) || isCodeSQLType(conf.DBType) {
 			return fmt.Errorf("database.type codesql is legacy config; move CodeSQL providers to sources with kind: code")
 		}
@@ -144,20 +144,20 @@ func validateServiceIsSourcesUsedConfig(conf *Config) error {
 // source validator temporarily disables their dependent roots. Keep task
 // scalar validation here so that temporary disablement cannot hide bad input.
 func validateServiceTasksConfig(conf *Config) error {
-	if conf == nil || !conf.Core.Tasks.Enabled {
+	if conf == nil || !conf.Tasks.Enabled {
 		return nil
 	}
-	if !conf.Core.Artifacts.Enabled {
+	if !conf.Artifacts.Enabled {
 		return fmt.Errorf("tasks require artifacts.enabled")
 	}
 	checks := []struct {
 		name  string
 		value int
 	}{
-		{"max_per_owner", conf.Core.Tasks.MaxPerOwner},
-		{"max_entries_per_task", conf.Core.Tasks.MaxEntriesPerTask},
-		{"entry_retention_hours", conf.Core.Tasks.EntryRetentionHours},
-		{"snapshot_max_bytes", conf.Core.Tasks.SnapshotMaxBytes},
+		{"max_per_owner", conf.Tasks.MaxPerOwner},
+		{"max_entries_per_task", conf.Tasks.MaxEntriesPerTask},
+		{"entry_retention_hours", conf.Tasks.EntryRetentionHours},
+		{"snapshot_max_bytes", conf.Tasks.SnapshotMaxBytes},
 	}
 	for _, check := range checks {
 		if check.value < 0 {
@@ -169,15 +169,15 @@ func validateServiceTasksConfig(conf *Config) error {
 
 func validateCoreSourcesWithManagedArtifacts(conf *Config) error {
 	if conf == nil || !conf.managedArtifactStore {
-		return conf.Core.ValidateIsSourcesUsed()
+		return conf.ValidateIsSourcesUsed()
 	}
-	artifacts, watches, tasks := conf.Core.Artifacts, conf.Core.Watches, conf.Core.Tasks
-	conf.Core.Artifacts.Enabled = false
-	conf.Core.Artifacts.Source = ""
-	conf.Core.Watches.Enabled = false
-	conf.Core.Tasks.Enabled = false
-	err := conf.Core.ValidateIsSourcesUsed()
-	conf.Core.Artifacts, conf.Core.Watches, conf.Core.Tasks = artifacts, watches, tasks
+	artifacts, watches, tasks := conf.Artifacts, conf.Watches, conf.Tasks
+	conf.Artifacts.Enabled = false
+	conf.Artifacts.Source = ""
+	conf.Watches.Enabled = false
+	conf.Tasks.Enabled = false
+	err := conf.ValidateIsSourcesUsed()
+	conf.Artifacts, conf.Watches, conf.Tasks = artifacts, watches, tasks
 	return err
 }
 
@@ -210,14 +210,14 @@ func normalizeServiceSources(conf *Config) error {
 		return nil
 	}
 	if !conf.managedArtifactStore {
-		return conf.Core.NormalizeSources()
+		return conf.NormalizeSources()
 	}
-	artifacts, watches, tasks := conf.Core.Artifacts, conf.Core.Watches, conf.Core.Tasks
-	conf.Core.Artifacts.Enabled = false
-	conf.Core.Artifacts.Source = ""
-	conf.Core.Watches.Enabled = false
-	conf.Core.Tasks.Enabled = false
-	err := conf.Core.NormalizeSources()
-	conf.Core.Artifacts, conf.Core.Watches, conf.Core.Tasks = artifacts, watches, tasks
+	artifacts, watches, tasks := conf.Artifacts, conf.Watches, conf.Tasks
+	conf.Artifacts.Enabled = false
+	conf.Artifacts.Source = ""
+	conf.Watches.Enabled = false
+	conf.Tasks.Enabled = false
+	err := conf.NormalizeSources()
+	conf.Artifacts, conf.Watches, conf.Tasks = artifacts, watches, tasks
 	return err
 }

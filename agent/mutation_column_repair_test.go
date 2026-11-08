@@ -694,22 +694,3 @@ func hasuraBaseRoot(root string) string {
 	}
 	return name
 }
-
-func ticketWriteRuntime(t *testing.T) (*protocolRuntime, *strictWriteRuntime) {
-	t.Helper()
-	base := &strictWriteRuntime{columns: map[string][]string{
-		"support_tickets": {"id", "status", "resolution_note", "resolved_at", "opened_at"},
-	}}
-	profile := &CapabilityProfile{RoleClass: "user", AllowedActions: []string{CapabilityActionDataUpdate}}
-	runtime := newProtocolRuntime(base, "close ticket 1 with a note", "", 8, profile, nil, CatalogSearchFeatures{})
-	runtime.state.seedOK = true
-	runtime.state.modelDiscoveryAction = true
-	runtime.state.tableColumnNames = map[string][]string{"support_tickets": {"id", "status", "resolution_note", "resolved_at", "opened_at"}}
-	runtime.state.tablesDetailed = map[string]bool{"support_tickets": true}
-	runtime.state.catalogDetails = []string{"table:app:main.support_tickets"}
-	runtime.state.securityRuntimeEvidence = true
-	runtime.state.observedValues = map[string]map[string][]string{
-		"support_tickets": {"status": {"open", "pending", "resolved"}},
-	}
-	return runtime, base
-}

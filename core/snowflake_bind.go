@@ -128,7 +128,7 @@ func sqlLiteral(v interface{}) (string, error) {
 	}
 
 	rv := reflect.ValueOf(v)
-	if rv.IsValid() && rv.Kind() == reflect.Ptr {
+	if rv.IsValid() && rv.Kind() == reflect.Pointer {
 		if rv.IsNil() {
 			return "NULL", nil
 		}

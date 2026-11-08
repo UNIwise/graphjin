@@ -204,7 +204,7 @@ func (s *graphjinService) buildCoreOptionsFor(dbs map[string]*sql.DB, managedDBs
 		for _, dbName := range s.managedSystemRootDatabases(targetDB) {
 			opts = append(opts, core.OptionSetManagedMutationHandler(dbName, controlPlane))
 		}
-		if s.conf.Core.Artifacts.Enabled {
+		if s.conf.Artifacts.Enabled {
 			for _, dbName := range s.managedSystemRootDatabases(targetDB) {
 				opts = append(opts, core.OptionSetManagedQueryHandler(dbName, controlPlane))
 			}
@@ -217,7 +217,7 @@ func (s *graphjinService) buildCoreOptionsFor(dbs map[string]*sql.DB, managedDBs
 		}
 		opts = append(opts, core.OptionSetManagedQueryHandler(targetDB, runtimeQueryHandler{service: live}))
 	}
-	if s.conf != nil && s.conf.Core.Artifacts.Enabled {
+	if s.conf != nil && s.conf.Artifacts.Enabled {
 		targetDB := s.metadataDB
 		if targetDB == "" {
 			targetDB = core.DefaultDBName
@@ -874,7 +874,7 @@ func (s *graphjinService) normalStart() error {
 		}
 	}
 	// Skip GraphJin core initialization if no database is configured (dev mode only)
-	if len(s.dbs) == 0 && (s.systemNanoDB == nil || !s.conf.Core.IsSourcesUsed()) {
+	if len(s.dbs) == 0 && (s.systemNanoDB == nil || !s.conf.IsSourcesUsed()) {
 		if !s.conf.Serv.Production {
 			s.log.Info("GraphJin core not initialized - waiting for database configuration via MCP")
 			return nil

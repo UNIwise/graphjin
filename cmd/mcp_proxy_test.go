@@ -181,8 +181,8 @@ func TestProxy_NotificationRequestWritesNoResponse(t *testing.T) {
 func TestProxy_ReconnectBackoffInterruptedByRequest(t *testing.T) {
 	var out bytes.Buffer
 	pr, pw := io.Pipe()
-	defer pr.Close()
-	defer pw.Close()
+	defer func() { _ = pr.Close() }()
+	defer func() { _ = pw.Close() }()
 
 	probeTimes := make(chan time.Time, 10)
 	p := &mcpProxy{
@@ -220,7 +220,7 @@ func TestProxy_ReconnectBackoffInterruptedByRequest(t *testing.T) {
 	if _, err := pw.Write([]byte(`{"jsonrpc":"2.0","id":7,"method":"tools/list"}` + "\n")); err != nil {
 		t.Fatalf("write stdin failed: %v", err)
 	}
-	pw.Close()
+	_ = pw.Close()
 
 	second := <-probeTimes
 	if second.Sub(first) >= 300*time.Millisecond {
@@ -248,13 +248,13 @@ func TestProxy_RecoversWithoutRestart(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{"jsonrpc":"2.0","id":2,"result":{"ok":true}}`)
+		_, _ = io.WriteString(w, `{"jsonrpc":"2.0","id":2,"result":{"ok":true}}`)
 	}))
 	defer srv.Close()
 
 	var out bytes.Buffer
 	pr, pw := io.Pipe()
-	defer pr.Close()
+	defer func() { _ = pr.Close() }()
 
 	p := &mcpProxy{
 		serverURL:        srv.URL,
@@ -284,7 +284,7 @@ func TestProxy_RecoversWithoutRestart(t *testing.T) {
 	if _, err := pw.Write([]byte(`{"jsonrpc":"2.0","id":2,"method":"tools/list"}` + "\n")); err != nil {
 		t.Fatalf("write second request failed: %v", err)
 	}
-	pw.Close()
+	_ = pw.Close()
 
 	select {
 	case err := <-done:
@@ -319,7 +319,7 @@ func TestProxy_HTTP4xxDoesNotMarkDisconnected(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		io.WriteString(w, `{"jsonrpc":"2.0","id":2,"result":{"ok":true}}`)
+		_, _ = io.WriteString(w, `{"jsonrpc":"2.0","id":2,"result":{"ok":true}}`)
 	}))
 	defer srv.Close()
 
@@ -373,9 +373,15 @@ func TestBackoffResetSemantics(t *testing.T) {
 	}
 
 	cur := p.initialBackoff
-	cur = nextBackoff(cur, p.initialBackoff, p.maxBackoff) // 40ms
-	cur = nextBackoff(cur, p.initialBackoff, p.maxBackoff) // 80ms
-	cur = p.initialBackoff                                 // reset
+	cur = nextBackoff(cur, p.initialBackoff, p.maxBackoff)
+	if cur != 40*time.Millisecond {
+		t.Fatalf("expected first backoff step of 40ms, got %v", cur)
+	}
+	cur = nextBackoff(cur, p.initialBackoff, p.maxBackoff)
+	if cur != 80*time.Millisecond {
+		t.Fatalf("expected second backoff step of 80ms, got %v", cur)
+	}
+	cur = p.initialBackoff // reset
 
 	if cur != 20*time.Millisecond {
 		t.Fatalf("expected reset to initial backoff, got %v", cur)

@@ -63,9 +63,9 @@ func validateConf(s *graphjinService) error {
 	// and warn loudly for each agentic subsystem a prod config tried to enable, so
 	// the override is visible rather than silent.
 	if effectiveMode(s.conf) == modeProd {
-		if s.conf.Core.Artifacts.Enabled {
+		if s.conf.Artifacts.Enabled {
 			s.log.Warn("prod mode: artifacts persistence is disabled (agentic-only); saved queries, fragments, workflows, and catalog annotations are not written to the database. Use agentic mode to enable it.")
-			s.conf.Core.Artifacts.Enabled = false
+			s.conf.Artifacts.Enabled = false
 		}
 		if s.conf.Agent.Enabled {
 			s.log.Warn("prod mode: the GraphJin agent and MCP server are disabled (agentic-only). Use agentic mode to expose the agent endpoint and MCP tools.")
@@ -180,7 +180,7 @@ func (s *graphjinService) isDatabaseConfigured() bool {
 		return true
 	}
 	// Check if multi-database configs exist with actual connection info
-	for _, dbConf := range s.conf.Core.Databases {
+	for _, dbConf := range s.conf.Databases {
 		if dbConf.ConnString != "" || dbConf.Host != "" || dbConf.Path != "" {
 			return true
 		}
@@ -212,7 +212,7 @@ func (s *graphjinService) initDB() error {
 	// In sources used, absence of SQL/CodeSQL connection details means there is
 	// no legacy database to fall back to. Virtual/system sources get a small
 	// host database in normalStart when needed.
-	if s.conf.Core.IsSourcesUsed() && !s.hasDatabaseConfigs() {
+	if s.conf.IsSourcesUsed() && !s.hasDatabaseConfigs() {
 		return nil
 	}
 
@@ -229,7 +229,7 @@ func (s *graphjinService) initDB() error {
 // hasDatabaseConfigs returns true if any entry in conf.Core.Databases
 // has enough info to create a connection.
 func (s *graphjinService) hasDatabaseConfigs() bool {
-	for _, dbConf := range s.conf.Core.Databases {
+	for _, dbConf := range s.conf.Databases {
 		if dbConf.ConnString != "" || dbConf.Host != "" || dbConf.Path != "" {
 			return true
 		}
@@ -239,13 +239,13 @@ func (s *graphjinService) hasDatabaseConfigs() bool {
 
 // initAllDBs creates connections for every entry in conf.Core.Databases.
 func (s *graphjinService) initAllDBs() error {
-	dbNames := make([]string, 0, len(s.conf.Core.Databases))
-	for name := range s.conf.Core.Databases {
+	dbNames := make([]string, 0, len(s.conf.Databases))
+	for name := range s.conf.Databases {
 		dbNames = append(dbNames, name)
 	}
 	sort.Strings(dbNames)
 	for _, name := range dbNames {
-		dbConf := s.conf.Core.Databases[name]
+		dbConf := s.conf.Databases[name]
 		runtimeDBConf := dbConf
 		if s.runtimeCore != nil && s.runtimeCore.Databases != nil {
 			if hydrated, ok := s.runtimeCore.Databases[name]; ok {
@@ -388,9 +388,9 @@ func (s *graphjinService) initLegacyDB() error {
 
 	// Store under the first Databases key (sorted for determinism)
 	name := core.DefaultDBName
-	if len(s.conf.Core.Databases) > 0 {
-		names := make([]string, 0, len(s.conf.Core.Databases))
-		for n := range s.conf.Core.Databases {
+	if len(s.conf.Databases) > 0 {
+		names := make([]string, 0, len(s.conf.Databases))
+		for n := range s.conf.Databases {
 			names = append(names, n)
 		}
 		sort.Strings(names)

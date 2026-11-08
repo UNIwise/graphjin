@@ -86,7 +86,7 @@ func rescoreRun(episodesDir string, now func() time.Time) (Report, error) {
 	report.Metrics = calculateMetrics(tasks, verdicts, rescored, initial, report.Provenance.Seed)
 	report.Tasks = verdicts
 	report.Acceptance = compareBaseline(report, nil)
-	report.ProviderUsage = rescoredProviderUsage(store, runID, source.Report.ProviderUsage, rescored)
+	report.ProviderUsage = rescoredProviderUsage(store, runID, source.ProviderUsage, rescored)
 	report.UsageComparison = nil
 	report.EpisodePaths = nil
 	return report, nil

@@ -225,18 +225,6 @@ func (s *graphjinService) initRuntimeObservabilityLocked() error {
 	return nil
 }
 
-func (s *graphjinService) reinitRuntimeObservability() {
-	if s == nil {
-		return
-	}
-	s.runtimeEventsMu.Lock()
-	defer s.runtimeEventsMu.Unlock()
-	s.closeRuntimeEventsLocked()
-	if err := s.initRuntimeObservabilityLocked(); err != nil && s.log != nil {
-		s.log.Warnf("runtime observability init error: %s", err)
-	}
-}
-
 func (s *graphjinService) closeRuntimeEvents() {
 	if s == nil {
 		return
@@ -441,15 +429,6 @@ func (s *graphjinService) runtimeRows(ctx context.Context) []map[string]any {
 	return rows
 }
 
-func (s *graphjinService) runtimeSourceRows(ctx context.Context, current runtimeStatus) []map[string]any {
-	if s == nil {
-		return nil
-	}
-	s.runtimeEventsMu.RLock()
-	defer s.runtimeEventsMu.RUnlock()
-	return s.runtimeSourceRowsLocked(ctx, current)
-}
-
 func (s *graphjinService) runtimeSourceRowsLocked(ctx context.Context, current runtimeStatus) []map[string]any {
 	if s == nil || s.conf == nil {
 		return nil
@@ -471,9 +450,9 @@ func (s *graphjinService) runtimeSourceRowsLocked(ctx context.Context, current r
 	}
 
 	seen := make(map[string]struct{})
-	rows := make([]map[string]any, 0, len(s.conf.Core.Sources)+len(statsByName)+len(s.managedDBs))
-	if s.conf.Core.IsSourcesUsed() {
-		for _, source := range s.conf.Core.Sources {
+	rows := make([]map[string]any, 0, len(s.conf.Sources)+len(statsByName)+len(s.managedDBs))
+	if s.conf.IsSourcesUsed() {
+		for _, source := range s.conf.Sources {
 			name := runtimeSourceName(source)
 			if name == "" {
 				continue
@@ -566,7 +545,7 @@ func (s *graphjinService) runtimeSourceEvent(ctx context.Context, source core.So
 		event.NextAction = "Use gj_catalog and gj_security before API-source calls."
 		event.Details["specs_configured"] = len(source.Specs) != 0 || strings.TrimSpace(source.SpecsDir) != ""
 		if s != nil && s.conf != nil {
-			access := s.conf.Core.EffectiveSourceAccess(source)
+			access := s.conf.EffectiveSourceAccess(source)
 			event.Details["access"] = map[string]string{"read": access.Read, "write": access.Write, "delete": access.Delete}
 			read, _ := s.conf.sourceCapabilityForSource(source, sourcecap.KeyAPIRead)
 			write, _ := s.conf.sourceCapabilityForSource(source, sourcecap.KeyAPIWrite)
@@ -802,7 +781,7 @@ func (s *graphjinService) runtimeRootQueryAuthorizedLocked(ctx context.Context) 
 	if s == nil || !s.runtimeObservabilityEnabled() {
 		return false
 	}
-	if s.conf != nil && s.conf.Core.IsSourcesUsed() {
+	if s.conf != nil && s.conf.IsSourcesUsed() {
 		return s.sourceModeRootAccessAllowed(runtimeRootTable, runtimeRoleClass(ctx))
 	}
 	return runtimeContextRole(ctx) == "user"

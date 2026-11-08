@@ -106,7 +106,7 @@ func cmdDBSetup(cmd *cobra.Command, args []string) {
 	cmdDBSeed(cmd, []string{})
 
 	// Finally create the control-plane store when it is enabled
-	if conf.Core.Artifacts.Enabled {
+	if conf.Artifacts.Enabled {
 		st, err := serv.InitStore(conf)
 		if err != nil {
 			log.Fatal(err)

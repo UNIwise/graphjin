@@ -203,9 +203,12 @@ func TestLeadKeepsConversationStateOutOfWorkers(t *testing.T) {
 	if len(asked) != 1 || !asked[0].ReadOnly {
 		t.Fatalf("delegations = %+v, want one read-only question", asked)
 	}
-	raw, _ := json.Marshal(asked[0])
+	// Observer is a func and cannot be marshalled; render the request data instead.
+	request := asked[0]
+	request.Observer = nil
+	raw := fmt.Sprintf("%+v", request)
 	for _, leaked := range []string{"Harbor Cafe", "metric units", "customer support"} {
-		if strings.Contains(string(raw), leaked) {
+		if strings.Contains(raw, leaked) {
 			t.Fatalf("worker request carries conversation state %q: %s", leaked, raw)
 		}
 	}

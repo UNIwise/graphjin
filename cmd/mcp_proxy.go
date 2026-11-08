@@ -137,9 +137,9 @@ func (p *mcpProxy) run(ctx context.Context) error {
 		p.captureResponseCache(meta, resp)
 
 		// Write response to stdout
-		p.stdout.Write(resp)
+		_, _ = p.stdout.Write(resp)
 		if len(resp) > 0 && resp[len(resp)-1] != '\n' {
-			p.stdout.Write([]byte("\n"))
+			_, _ = p.stdout.Write([]byte("\n"))
 		}
 	}
 }
@@ -160,8 +160,8 @@ func (p *mcpProxy) writeErrorResponse(request []byte, err error) {
 	}
 
 	respBytes, _ := json.Marshal(errResp)
-	p.stdout.Write(respBytes)
-	p.stdout.Write([]byte("\n"))
+	_, _ = p.stdout.Write(respBytes)
+	_, _ = p.stdout.Write([]byte("\n"))
 }
 
 func (p *mcpProxy) forwardRequest(ctx context.Context, body []byte) ([]byte, error) {
@@ -184,7 +184,7 @@ func (p *mcpProxy) forwardRequest(ctx context.Context, body []byte) ([]byte, err
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -267,7 +267,7 @@ func (p *mcpProxy) probeConnectivity(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 500 {
 		return &mcpHTTPError{StatusCode: resp.StatusCode}
@@ -321,8 +321,8 @@ func (p *mcpProxy) writeFallbackResponse(meta rpcRequestMeta) bool {
 		"result":  result,
 	}
 	respBytes, _ := json.Marshal(resp)
-	p.stdout.Write(respBytes)
-	p.stdout.Write([]byte("\n"))
+	_, _ = p.stdout.Write(respBytes)
+	_, _ = p.stdout.Write([]byte("\n"))
 	return true
 }
 
@@ -342,7 +342,7 @@ func (p *mcpProxy) ensureDefaults() {
 	if p.probeTimeout <= 0 {
 		p.probeTimeout = 5 * time.Second
 	}
-	if p.connected == false && p.disconnectedAt.IsZero() && p.lastConnErr == nil {
+	if !p.connected && p.disconnectedAt.IsZero() && p.lastConnErr == nil {
 		p.connected = true
 	}
 	if p.reconnectWakeCh == nil {
@@ -561,8 +561,8 @@ func (p *mcpProxy) writeDisconnectedToolCallError(meta rpcRequestMeta) {
 		},
 	}
 	respBytes, _ := json.Marshal(resp)
-	p.stdout.Write(respBytes)
-	p.stdout.Write([]byte("\n"))
+	_, _ = p.stdout.Write(respBytes)
+	_, _ = p.stdout.Write([]byte("\n"))
 }
 
 func nextBackoff(current, initial, max time.Duration) time.Duration {

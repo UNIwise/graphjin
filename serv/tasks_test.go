@@ -18,7 +18,7 @@ import (
 func newSQLiteTaskService(t *testing.T, maxPerOwner, maxEntries int) (*graphjinService, taskControlPlane) {
 	t.Helper()
 	_, svc := newSQLiteWatchServiceWithOptions(t, 10, func(conf *Config) {
-		conf.Core.Tasks = core.TasksConfig{
+		conf.Tasks = core.TasksConfig{
 			Enabled:             true,
 			MaxPerOwner:         maxPerOwner,
 			MaxEntriesPerTask:   maxEntries,

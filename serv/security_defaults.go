@@ -50,13 +50,13 @@ func controlPlaneTableReadOnlyExplicit(conf *Config, database, table string) boo
 func controlPlaneSourceReadOnly(conf *Config, table string) bool {
 	switch strings.ToLower(strings.TrimSpace(table)) {
 	case "gj_watch", "gj_watch_event":
-		return configWatchesEnabled(conf) && conf.Core.Artifacts.Source != "" && conf.artifactSourceReadOnly()
+		return configWatchesEnabled(conf) && conf.Artifacts.Source != "" && conf.artifactSourceReadOnly()
 	case "gj_task", "gj_task_entry":
-		return configTasksEnabled(conf) && conf.Core.Artifacts.Source != "" && conf.artifactSourceReadOnly()
+		return configTasksEnabled(conf) && conf.Artifacts.Source != "" && conf.artifactSourceReadOnly()
 	case threadsRootTable, threadMessagesRootTable, threadRunsRootTable:
-		return configThreadsEnabled(conf) && conf.Core.Artifacts.Source != "" && conf.artifactSourceReadOnly()
+		return configThreadsEnabled(conf) && conf.Artifacts.Source != "" && conf.artifactSourceReadOnly()
 	case "gj_artifacts":
-		return conf.Core.Artifacts.Enabled && conf.Core.Artifacts.Source != "" && conf.artifactSourceReadOnly()
+		return conf.Artifacts.Enabled && conf.Artifacts.Source != "" && conf.artifactSourceReadOnly()
 	case "gj_catalog", "gj_security", "gj_runtime":
 		return true
 	default:
@@ -95,12 +95,12 @@ func applySystemRoleQueryDefaults(conf *Config, runtimeCore *core.Config, databa
 
 	systemTables := registeredSystemRoots(conf)
 	roles := []string{"user", "anon"}
-	if conf.Core.IsSourcesUsed() {
+	if conf.IsSourcesUsed() {
 		roles = sourceModeSystemRoleNames(conf)
 	}
 	for _, role := range roles {
 		for _, table := range systemTables {
-			if conf.Core.IsSourcesUsed() {
+			if conf.IsSourcesUsed() {
 				if systemRoleTableConfigured(&conf.Core, role, table, database) {
 					continue
 				}
@@ -347,7 +347,7 @@ func assertWatchNanoRoleDefaults(conf *Config, runtimeCore *core.Config, databas
 		return nil
 	}
 	roles := []string{"user", "anon"}
-	if conf.Core.IsSourcesUsed() {
+	if conf.IsSourcesUsed() {
 		roles = sourceModeSystemRoleNames(conf)
 	}
 	for _, role := range roles {
@@ -375,7 +375,7 @@ func assertTaskNanoRoleDefaults(conf *Config, runtimeCore *core.Config, database
 		return nil
 	}
 	roles := []string{"user", "anon"}
-	if conf.Core.IsSourcesUsed() {
+	if conf.IsSourcesUsed() {
 		roles = sourceModeSystemRoleNames(conf)
 	}
 	for _, role := range roles {
@@ -399,11 +399,11 @@ func assertTaskNanoRoleDefaults(conf *Config, runtimeCore *core.Config, database
 }
 
 func assertArtifactNanoRoleDefaults(conf *Config, runtimeCore *core.Config, database string) error {
-	if conf == nil || runtimeCore == nil || !conf.Core.Artifacts.Enabled {
+	if conf == nil || runtimeCore == nil || !conf.Artifacts.Enabled {
 		return nil
 	}
 	roles := []string{"user", "anon"}
-	if conf.Core.IsSourcesUsed() {
+	if conf.IsSourcesUsed() {
 		roles = sourceModeSystemRoleNames(conf)
 	}
 	for _, role := range roles {
@@ -517,7 +517,7 @@ func sourceModeSystemRoleNames(conf *Config) []string {
 	if conf == nil {
 		return out
 	}
-	for _, role := range conf.Core.Roles {
+	for _, role := range conf.Roles {
 		add(role.Name)
 	}
 	for _, role := range conf.Core.EffectiveIdentityConfig().AdminRoles {
@@ -555,30 +555,6 @@ func systemRootAccessAllowed(accessMode, role string, adminRoles []string, mode 
 			}
 		}
 		return false
-	default:
-		return false
-	}
-}
-
-func systemReadSourceEnabled(conf *Config, table string) bool {
-	if conf == nil {
-		return false
-	}
-	switch strings.ToLower(strings.TrimSpace(table)) {
-	case "gj_catalog", "gj_security", "gj_config":
-		return conf.catalogToolsEnabled() || conf.systemControlPlaneEnabled()
-	case "gj_runtime":
-		return conf != nil && conf.runtimeRootRegistered()
-	case "gj_artifacts":
-		return conf != nil && conf.Core.Artifacts.Enabled
-	case "gj_watch", "gj_watch_event":
-		return configWatchesEnabled(conf)
-	case "gj_task", "gj_task_entry":
-		return configTasksEnabled(conf)
-	case threadsRootTable, threadMessagesRootTable, threadRunsRootTable:
-		return configThreadsEnabled(conf)
-	case "gj_workflow", "gj_workflow_execution":
-		return conf.workflowsEnabled()
 	default:
 		return false
 	}

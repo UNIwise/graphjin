@@ -281,13 +281,13 @@ func TestScanRoleUnionRowOutcomes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	ctx := context.Background()
 	conn, err := db.Conn(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	for _, stmt := range []string{
 		`CREATE TABLE users (id INTEGER PRIMARY KEY, dept TEXT)`,
 		`INSERT INTO users (id, dept) VALUES (1, 'finance'), (2, 'none')`,

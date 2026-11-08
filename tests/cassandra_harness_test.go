@@ -37,7 +37,7 @@ func startCassandraDB(ctx context.Context) (func(context.Context) error, *sql.DB
 			return nil, nil, fmt.Errorf("cassandra seed: %w", err)
 		}
 		db := sql.OpenDB(cassandradriver.NewConnector(session, cassandraKeyspace))
-		return func(context.Context) error { db.Close(); session.Close(); return nil }, db, nil
+		return func(context.Context) error { _ = db.Close(); session.Close(); return nil }, db, nil
 	}
 
 	req := testcontainers.GenericContainerRequest{
@@ -70,7 +70,7 @@ func startCassandraDB(ctx context.Context) (func(context.Context) error, *sql.DB
 	}
 
 	cluster := gocql.NewCluster(host)
-	cluster.Port = port.Int()
+	cluster.Port = int(port.Num())
 	cluster.ProtoVersion = 4
 	cluster.Consistency = gocql.Quorum
 	cluster.ConnectTimeout = 20 * time.Second

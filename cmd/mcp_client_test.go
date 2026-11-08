@@ -24,7 +24,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	initIsolatedConfigDir(dir)
 	os.Exit(m.Run())
 }
@@ -54,7 +54,7 @@ func newTestMCPServer(t *testing.T, handler func(req *jsonRPCRequest, httpReq *h
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
 		if status >= 400 {
-			_, _ = w.Write([]byte(fmt.Sprintf("HTTP %d", status)))
+			_, _ = fmt.Fprintf(w, "HTTP %d", status)
 			return
 		}
 		envelope := map[string]any{

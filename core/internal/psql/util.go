@@ -134,12 +134,12 @@ func int32String(w *bytes.Buffer, val int32) {
 	w.WriteString(strconv.FormatInt(int64(val), 10))
 }
 
-func (c *compilerContext) Write(s string) (int, error) {
-	return c.w.WriteString(s)
+func (c *compilerContext) Write(s string) {
+	c.w.WriteString(s)
 }
 
-func (c *compilerContext) WriteString(s string) (int, error) {
-	return c.w.WriteString(s)
+func (c *compilerContext) WriteString(s string) {
+	c.w.WriteString(s)
 }
 
 func (c *compilerContext) AddParam(p dialect.Param) string {

@@ -175,8 +175,8 @@ func TestConsoleSessionRefusals(t *testing.T) {
 func TestConsoleDemoSessionCarriesConfiguredClaims(t *testing.T) {
 	hs, ah := newConsoleSessionService(t)
 	s := hs.Load().(*graphjinService)
-	s.conf.Core.Identity.RoleClaims = []string{"groups_role"}
-	s.conf.Core.Identity.NamespaceClaim = "tenant"
+	s.conf.Identity.RoleClaims = []string{"groups_role"}
+	s.conf.Identity.NamespaceClaim = "tenant"
 	s.demoSignIn = &DemoSignIn{UserID: "demo-operator", Role: "admin", AccountID: "acct_demo"}
 
 	rec := httptest.NewRecorder()

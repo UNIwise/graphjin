@@ -131,7 +131,7 @@ func TestExecuteMultiMutationAsQueryWithNullOps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("executeMultiMutationAsQuery() error = %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	dest := make([]driver.Value, 1)
 	if err := rows.Next(dest); err != nil {
@@ -175,7 +175,7 @@ func TestConnectorCreation(t *testing.T) {
 	if db == nil {
 		t.Fatal("sql.OpenDB returned nil")
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// The ping will fail without a running MongoDB, but that's expected
 	ctx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
@@ -202,14 +202,16 @@ func TestWithMongoDB(t *testing.T) {
 	if err := client.Ping(ctx, nil); err != nil {
 		t.Skipf("Skipping MongoDB integration test - server not available: %v", err)
 	}
-	defer client.Disconnect(ctx)
+	defer func() { _ = client.Disconnect(ctx) }()
 
 	// Create test database and collection
 	db := client.Database("graphjin_test")
 	coll := db.Collection("users")
 
 	// Clean up before test
-	coll.Drop(ctx)
+	if err := coll.Drop(ctx); err != nil {
+		t.Fatalf("Failed to drop test collection: %v", err)
+	}
 
 	// Insert test data
 	testDocs := []any{
@@ -225,7 +227,7 @@ func TestWithMongoDB(t *testing.T) {
 	// Create SQL DB using our driver
 	connector := NewConnector(client, "graphjin_test")
 	sqlDB := sql.OpenDB(connector)
-	defer sqlDB.Close()
+	defer func() { _ = sqlDB.Close() }()
 
 	t.Run("aggregate query", func(t *testing.T) {
 		query := `{"operation":"aggregate","collection":"users","pipeline":[{"$match":{"age":{"$gt":25}}},{"$sort":{"name":1}}]}`
@@ -234,7 +236,7 @@ func TestWithMongoDB(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Query failed: %v", err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		var result []byte
 		if rows.Next() {
@@ -270,7 +272,7 @@ func TestWithMongoDB(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Introspect failed: %v", err)
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		columns, err := rows.Columns()
 		if err != nil {
@@ -311,5 +313,7 @@ func TestWithMongoDB(t *testing.T) {
 	})
 
 	// Clean up
-	coll.Drop(ctx)
+	if err := coll.Drop(ctx); err != nil {
+		t.Errorf("Failed to drop test collection: %v", err)
+	}
 }

@@ -48,7 +48,7 @@ func (s *graphjinService) localFilesystemWatchRoots() ([]localFSWatchRoot, error
 	if s == nil || s.conf == nil {
 		return nil, nil
 	}
-	if len(s.conf.Core.Filesystems) == 0 {
+	if len(s.conf.Filesystems) == 0 {
 		return nil, nil
 	}
 	// Same base the engine resolves filesystems[].root against — the
@@ -58,8 +58,8 @@ func (s *graphjinService) localFilesystemWatchRoots() ([]localFSWatchRoot, error
 	if err != nil {
 		return nil, fmt.Errorf("filesystem watcher: resolve config path: %w", err)
 	}
-	roots := make([]localFSWatchRoot, 0, len(s.conf.Core.Filesystems))
-	for _, fc := range s.conf.Core.Filesystems {
+	roots := make([]localFSWatchRoot, 0, len(s.conf.Filesystems))
+	for _, fc := range s.conf.Filesystems {
 		if fc.ReadOnly || !strings.EqualFold(fc.Backend, "local") || strings.TrimSpace(fc.Root) == "" {
 			continue
 		}

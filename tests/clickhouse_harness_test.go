@@ -40,11 +40,11 @@ func startClickHouseDB(ctx context.Context) (func(context.Context) error, *sql.D
 			return nil, nil, err
 		}
 		if err := seedClickHouseWebshop(inner); err != nil {
-			inner.Close()
+			_ = inner.Close()
 			return nil, nil, err
 		}
 		db := sql.OpenDB(clickhousedriver.NewConnector(inner, chDatabase))
-		return func(context.Context) error { db.Close(); inner.Close(); return nil }, db, nil
+		return func(context.Context) error { _ = db.Close(); _ = inner.Close(); return nil }, db, nil
 	}
 
 	req := testcontainers.GenericContainerRequest{
@@ -81,12 +81,12 @@ func startClickHouseDB(ctx context.Context) (func(context.Context) error, *sql.D
 		Auth: clickhouse.Auth{Database: chDatabase, Username: chUser, Password: chPass},
 	})
 	if err := chReady(ctx, inner); err != nil {
-		inner.Close()
+		_ = inner.Close()
 		_ = container.Terminate(ctx)
 		return nil, nil, err
 	}
 	if err := seedClickHouseWebshop(inner); err != nil {
-		inner.Close()
+		_ = inner.Close()
 		_ = container.Terminate(ctx)
 		return nil, nil, fmt.Errorf("clickhouse seed: %w", err)
 	}

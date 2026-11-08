@@ -23,7 +23,7 @@ func TestTaskStructureKeySeparatesConfirmationFlows(t *testing.T) {
 		t.Fatal("confirmation flows differing only in history and post-state must not share a structure key")
 	}
 	// Genuine duplicates must still collapse.
-	if taskStructureKey(invoices) != taskStructureKey(invoices) {
+	if first, second := taskStructureKey(invoices), taskStructureKey(invoices); first != second {
 		t.Fatal("structure key is not stable")
 	}
 }

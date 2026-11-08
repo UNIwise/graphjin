@@ -32,7 +32,7 @@ CREATE TABLE public.users (
 		TestName: "redshift-wrapper",
 		RunID:    "unit",
 	}))
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	var tableName string
 	if err := db.QueryRowContext(context.Background(),
@@ -53,7 +53,7 @@ func TestGraphJinRedshiftQuerySmoke(t *testing.T) {
 		TestName: "redshift-query-smoke",
 		RunID:    "unit",
 	}))
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	gj, err := core.NewGraphJin(&core.Config{
 		DBType:               "redshift",

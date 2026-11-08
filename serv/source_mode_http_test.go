@@ -249,7 +249,7 @@ func TestSourceModeHTTPJWTRoleModeUnion(t *testing.T) {
 	}
 
 	union := newSourceModeJWTHTTPTestHandler(t, func(conf *Config) {
-		conf.Core.Identity.RoleMode = core.RoleModeUnion
+		conf.Identity.RoleMode = core.RoleModeUnion
 	})
 	if !readSecurity(t, union) {
 		t.Fatal("union mode should keep the admin role's access to gj_security")
@@ -261,9 +261,9 @@ func TestSourceModeHTTPJWTRoleModeUnion(t *testing.T) {
 
 func TestSourceModeHTTPJWTGrantRoles(t *testing.T) {
 	handler := newSourceModeJWTHTTPTestHandler(t, func(conf *Config) {
-		conf.Core.Identity.RoleMode = core.RoleModeUnion
-		conf.Core.Roles = append(conf.Core.Roles, core.Role{Name: "support"})
-		conf.Core.Sources[0].Access.Grants = []core.SourceAccessGrant{
+		conf.Identity.RoleMode = core.RoleModeUnion
+		conf.Roles = append(conf.Roles, core.Role{Name: "support"})
+		conf.Sources[0].Access.Grants = []core.SourceAccessGrant{
 			{Role: "member", Tables: []core.SourceAccessGrantTable{{Name: "users", Columns: []string{"id", "name"}, Filter: "{ id: { eq: 1 } }"}}},
 			{Role: "support", Tables: []core.SourceAccessGrantTable{{Name: "users", Columns: []string{"id", "name"}, Filter: "{ id: { in: [2, 3] } }"}}},
 		}
@@ -308,14 +308,14 @@ func newSourceModeJWTHTTPTestHandler(t *testing.T, mutators ...func(*Config)) ht
 
 	dbPath := createSourceModeHTTPDB(t)
 	svc := newControlPlaneGraphQLTestServiceWithConfig(t, MCPConfig{}, dbPath, func(conf *Config) {
-		conf.Core.Mode = modeAgentic
-		conf.Core.System.Capabilities = map[string]bool{featurecap.KeySecurityRead: true}
-		conf.Core.Roles = append(conf.Core.Roles, core.Role{Name: "member"})
-		conf.Serv.Auth = Auth{
+		conf.Mode = modeAgentic
+		conf.System.Capabilities = map[string]bool{featurecap.KeySecurityRead: true}
+		conf.Roles = append(conf.Roles, core.Role{Name: "member"})
+		conf.Auth = Auth{
 			Type: "jwt",
 			JWT:  JWTConfig{Secret: sourceModeHTTPJWTSecret},
 		}
-		conf.Serv.AuthFailBlock = true
+		conf.AuthFailBlock = true
 		for _, mutate := range mutators {
 			mutate(conf)
 		}
@@ -338,7 +338,7 @@ func createSourceModeHTTPDB(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	for _, stmt := range []string{
 		`CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, account_id TEXT)`,
@@ -409,9 +409,9 @@ func mustMarshalTestJSON(v any) []byte {
 func TestSourceModeJWTGroupClaimsBecomeTrustedGroups(t *testing.T) {
 	dbPath := createSourceModeHTTPDB(t)
 	svc := newControlPlaneGraphQLTestServiceWithConfig(t, MCPConfig{}, dbPath, func(conf *Config) {
-		conf.Core.Mode = modeAgentic
-		conf.Core.Identity.GroupClaims = []string{"groups", "teams"}
-		conf.Serv.Auth = Auth{Type: "jwt", JWT: JWTConfig{Secret: sourceModeHTTPJWTSecret}}
+		conf.Mode = modeAgentic
+		conf.Identity.GroupClaims = []string{"groups", "teams"}
+		conf.Auth = Auth{Type: "jwt", JWT: JWTConfig{Secret: sourceModeHTTPJWTSecret}}
 	})
 	ah, err := auth.NewAuthHandlerFunc(svc.conf.Auth)
 	if err != nil {

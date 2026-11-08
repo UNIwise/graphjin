@@ -249,7 +249,7 @@ func TestSourceModeGrantsQuery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	db.SetMaxOpenConns(1)
 	if _, err := db.Exec(`CREATE TABLE orders (id INTEGER PRIMARY KEY, account_id TEXT, region TEXT, amount INTEGER);
 INSERT INTO orders (id, account_id, region, amount) VALUES

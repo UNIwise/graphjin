@@ -25,7 +25,6 @@ type Param struct {
 }
 
 type Metadata struct {
-	ct     string
 	poll   bool
 	params []Param
 	pindex map[string]int

@@ -243,7 +243,7 @@ func (h taskControlPlane) allTaskEntryRowsForProjection(ctx context.Context) ([]
 		return nil, err
 	}
 	if h.service != nil && h.service.conf != nil {
-		rows = trimTaskEntryProjectionRows(rows, h.service.conf.Core.EffectiveTasksConfig())
+		rows = trimTaskEntryProjectionRows(rows, h.service.conf.EffectiveTasksConfig())
 	}
 	return rows, nil
 }
@@ -387,7 +387,7 @@ func (h taskControlPlane) upsertTask(ctx context.Context, root core.ManagedMutat
 	if verifyChanged {
 		verifyStatus = ""
 		verifyAfter = ""
-		if previousStatus == "verifying" && !(statusSupplied && status == "closed") {
+		if previousStatus == "verifying" && (!statusSupplied || status != "closed") {
 			status = "open"
 			outcome = ""
 			closedAt = ""
@@ -631,7 +631,7 @@ func (h taskControlPlane) pruneTaskEntries(ctx context.Context, taskID string) e
 	if err != nil || len(rows) == 0 {
 		return err
 	}
-	cfg := h.service.conf.Core.EffectiveTasksConfig()
+	cfg := h.service.conf.EffectiveTasksConfig()
 	sort.SliceStable(rows, func(i, j int) bool {
 		return stringMapValue(rows[i], "created_at") > stringMapValue(rows[j], "created_at")
 	})
@@ -857,7 +857,7 @@ func (s *graphjinService) tasksEnabled() bool {
 }
 
 func configTasksEnabled(conf *Config) bool {
-	return conf != nil && conf.Core.Artifacts.Enabled && conf.Core.Tasks.Enabled
+	return conf != nil && conf.Artifacts.Enabled && conf.Tasks.Enabled
 }
 
 func (s *graphjinService) taskDB() (*sql.DB, string, string, string, bool) {

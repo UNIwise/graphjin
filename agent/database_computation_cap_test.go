@@ -14,8 +14,10 @@ func TestDatabaseComputationRefusalsAreCapped(t *testing.T) {
 		"tool": toolExecuteGraphQL, "has_data": true, "error_count": 0,
 		"query": `query { green_lots(order_by: { remaining_kg: desc }, limit: 1) { lot_code remaining_kg } }`,
 	})
-	if !strings.HasPrefix(state.gateFinalization(), "database_computation_required:") ||
-		!strings.HasPrefix(state.gateFinalization(), "database_computation_required:") {
+	// gateFinalization counts refusals, so each call is a separate final answer.
+	first, second := state.gateFinalization(), state.gateFinalization()
+	if !strings.HasPrefix(first, "database_computation_required:") ||
+		!strings.HasPrefix(second, "database_computation_required:") {
 		t.Fatal("the first two finals should be refused")
 	}
 	if got := state.gateFinalization(); got != "" {

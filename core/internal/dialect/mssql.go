@@ -295,64 +295,6 @@ func (d *MSSQLDialect) RenderCursorCTE(ctx Context, sel *qcode.Select) {
 	ctx.WriteString(`)) AS [_p]([v]) CROSS APPLY (SELECT CASE WHEN [_p].[v] LIKE 'gj-%' THEN STUFF([_p].[v], 1, CHARINDEX(':', [_p].[v], 4), '') ELSE [_p].[v] END AS [v]) AS [c]) `)
 }
 
-// renderNthColonPos renders a CHARINDEX expression to find the position of the n-th colon
-// in the cursor parameter. Returns 0 if there aren't enough colons.
-func (d *MSSQLDialect) renderNthColonPos(ctx Context, n int) {
-	if n <= 0 {
-		ctx.WriteString(`0`)
-		return
-	}
-	if n == 1 {
-		ctx.WriteString(`CHARINDEX(':', `)
-		ctx.AddParam(Param{Name: "cursor", Type: "text"})
-		ctx.WriteString(`)`)
-		return
-	}
-	// For n > 1, we need to nest: CHARINDEX(':', @cursor, prev_pos + 1)
-	// where prev_pos is the position of colon (n-1)
-	ctx.WriteString(`CHARINDEX(':', `)
-	ctx.AddParam(Param{Name: "cursor", Type: "text"})
-	ctx.WriteString(`, `)
-	d.renderNthColonPos(ctx, n-1)
-	ctx.WriteString(` + 1)`)
-}
-
-// renderNthColonPosFromCol renders a CHARINDEX expression to find the position of the n-th colon
-// in the [c].[cursor] column (from the __cur_clean CTE). Returns 0 if there aren't enough colons.
-func (d *MSSQLDialect) renderNthColonPosFromCol(ctx Context, n int) {
-	if n <= 0 {
-		ctx.WriteString(`0`)
-		return
-	}
-	if n == 1 {
-		ctx.WriteString(`CHARINDEX(':', [c].[cursor])`)
-		return
-	}
-	// For n > 1, we need to nest: CHARINDEX(':', [c].[cursor], prev_pos + 1)
-	// where prev_pos is the position of colon (n-1)
-	ctx.WriteString(`CHARINDEX(':', [c].[cursor], `)
-	d.renderNthColonPosFromCol(ctx, n-1)
-	ctx.WriteString(` + 1)`)
-}
-
-// renderNthColonPosInline renders a CHARINDEX expression to find the position of the n-th colon
-// in the [cursor] column (inline within the __cur CTE). Returns 0 if there aren't enough colons.
-func (d *MSSQLDialect) renderNthColonPosInline(ctx Context, n int) {
-	if n <= 0 {
-		ctx.WriteString(`0`)
-		return
-	}
-	if n == 1 {
-		ctx.WriteString(`CHARINDEX(':', [cursor])`)
-		return
-	}
-	// For n > 1, we need to nest: CHARINDEX(':', [cursor], prev_pos + 1)
-	// where prev_pos is the position of colon (n-1)
-	ctx.WriteString(`CHARINDEX(':', [cursor], `)
-	d.renderNthColonPosInline(ctx, n-1)
-	ctx.WriteString(` + 1)`)
-}
-
 // renderNthColonPosFromClean renders a CHARINDEX expression to find the position of the n-th colon
 // in the [c].[v] column (the cleaned cursor from CROSS APPLY). Returns 0 if there aren't enough colons.
 func (d *MSSQLDialect) renderNthColonPosFromClean(ctx Context, n int) {
@@ -653,12 +595,13 @@ func (d *MSSQLDialect) RenderValPrefix(ctx Context, ex *qcode.Exp) bool {
 
 		ctx.WriteString(`) WHERE [value] IN (`)
 
-		if ex.Right.ValType == qcode.ValVar {
+		switch ex.Right.ValType {
+		case qcode.ValVar:
 			// Variable list: use OPENJSON to unpack
 			ctx.WriteString(`SELECT [value] FROM OPENJSON(`)
 			ctx.AddParam(Param{Name: ex.Right.Val, Type: "json", IsArray: true})
 			ctx.WriteString(`)`)
-		} else if ex.Right.ValType == qcode.ValList {
+		case qcode.ValList:
 			// Static list: render inline values
 			for i := range ex.Right.ListVal {
 				if i != 0 {
@@ -1319,30 +1262,6 @@ func (d *MSSQLDialect) renderNestedPKSubquery(ctx Context, schema, table, pkCol,
 	}
 }
 
-func (d *MSSQLDialect) renderOuterOrderBy(ctx Context, r InlineChildRenderer, sel *qcode.Select, subqueryAlias string) {
-	if len(sel.OrderBy) == 0 {
-		return
-	}
-	ctx.WriteString(` WITHIN GROUP (ORDER BY `)
-	for i, ob := range sel.OrderBy {
-		if i != 0 {
-			ctx.WriteString(`, `)
-		}
-		if subqueryAlias != "" {
-			ctx.WriteString(subqueryAlias)
-			ctx.WriteString(`.`)
-		}
-		ctx.WriteString(fmt.Sprintf("[_ord_%d]", i))
-		switch ob.Order {
-		case qcode.OrderAsc:
-			ctx.WriteString(` ASC`)
-		case qcode.OrderDesc:
-			ctx.WriteString(` DESC`)
-		}
-	}
-	ctx.WriteString(`)`)
-}
-
 func (d *MSSQLDialect) RenderChildCursor(ctx Context, renderChild func()) {
 	ctx.WriteString(`JSON_VALUE(`)
 	renderChild()
@@ -1495,187 +1414,6 @@ func (d *MSSQLDialect) renderInlineJSONFields(ctx Context, r InlineChildRenderer
 		ctx.Quote(csel.FieldName)
 		i++
 	}
-}
-
-func (d *MSSQLDialect) renderSubqueryJSONFields(ctx Context, r InlineChildRenderer, sel *qcode.Select) {
-	i := 0
-	for _, f := range sel.Fields {
-		if f.SkipRender == qcode.SkipTypeDrop {
-			continue
-		}
-		if i != 0 {
-			ctx.WriteString(`, `)
-		}
-
-		if f.SkipRender == qcode.SkipTypeNulled || f.SkipRender == qcode.SkipTypeBlocked || f.SkipRender == qcode.SkipTypeUserNeeded {
-			ctx.WriteString(`NULL AS `)
-			ctx.Quote(f.FieldName)
-			i++
-			continue
-		}
-
-		isJSON := f.Col.Type == "json" || f.Col.Type == "nvarchar(max)" || f.Col.Array
-		if isJSON {
-			ctx.WriteString(`JSON_QUERY(`)
-		}
-		r.ColWithTable("_gj_t", f.FieldName)
-		if isJSON {
-			ctx.WriteString(`, '$')`)
-		}
-		ctx.WriteString(` AS `)
-		ctx.Quote(f.FieldName)
-		i++
-	}
-
-	// Handle __typename
-	if sel.Typename {
-		if i != 0 {
-			ctx.WriteString(`, `)
-		}
-		ctx.WriteString(`'`)
-		ctx.WriteString(sel.Table)
-		ctx.WriteString(`' AS [__typename]`)
-	}
-
-	// Handle nested children
-	for _, cid := range sel.Children {
-		csel := r.GetChild(cid)
-		if csel == nil || csel.SkipRender == qcode.SkipTypeRemote || csel.SkipRender == qcode.SkipTypeDrop {
-			continue
-		}
-		if i != 0 {
-			ctx.WriteString(`, `)
-		}
-		r.ColWithTable("_gj_t", csel.FieldName)
-		ctx.WriteString(` AS `)
-		ctx.Quote(csel.FieldName)
-		i++
-	}
-}
-
-func (d *MSSQLDialect) renderBaseColumns(ctx Context, r InlineChildRenderer, sel *qcode.Select) {
-	i := 0
-	for _, f := range sel.Fields {
-		if f.SkipRender != qcode.SkipTypeNone {
-			continue
-		}
-		if i != 0 {
-			ctx.WriteString(`, `)
-		}
-		t := sel.Ti.Name
-		if sel.ID >= 0 {
-			t = fmt.Sprintf("%s_%d", t, sel.ID)
-		}
-
-		// Handle skipIf/includeIf field filters
-		if f.FieldFilter.Exp != nil {
-			ctx.WriteString(`(CASE WHEN `)
-			d.renderFieldFilterExp(ctx, r, sel, f.FieldFilter.Exp)
-			ctx.WriteString(` THEN `)
-		}
-
-		if f.Window != nil {
-			r.RenderWindowFunction(sel, f, t)
-		} else if f.Func.Name != "" {
-			// MSSQL requires user-defined functions to be called with at least a two-part name
-			// Built-in aggregates (count, sum, max, etc.) have Agg=true and empty Schema - no prefix needed
-			if f.Func.Schema != "" {
-				ctx.Quote(f.Func.Schema)
-				ctx.WriteString(`.`)
-				ctx.Quote(f.Func.Name)
-			} else if !f.Func.Agg {
-				// User-defined function without explicit schema, use dbo
-				ctx.WriteString(`[dbo].`)
-				ctx.Quote(f.Func.Name)
-			} else {
-				// Built-in aggregates (Schema == "" && Agg == true) - write directly without quoting
-				ctx.WriteString(f.Func.Name)
-			}
-			ctx.WriteString(`(`)
-			if len(f.Args) != 0 {
-				for k, arg := range f.Args {
-					if k != 0 {
-						ctx.WriteString(`, `)
-					}
-					switch arg.Type {
-					case qcode.ArgTypeCol:
-						r.ColWithTable(t, arg.Col.Name)
-					case qcode.ArgTypeVal:
-						ctx.WriteString(arg.Val)
-					default:
-						ctx.WriteString(arg.Val)
-					}
-				}
-			} else if f.Col.Name == "" || f.Col.Name == "*" {
-				ctx.WriteString(`*`)
-			} else {
-				r.ColWithTable(t, f.Col.Name)
-			}
-			ctx.WriteString(`)`)
-		} else {
-			r.ColWithTable(t, f.Col.Name)
-		}
-
-		if f.FieldFilter.Exp != nil {
-			ctx.WriteString(` ELSE null END)`)
-		}
-
-		ctx.WriteString(` AS `)
-		ctx.Quote(f.FieldName)
-		i++
-	}
-
-	for j, ob := range sel.OrderBy {
-		if i != 0 || j > 0 {
-			ctx.WriteString(`, `)
-		}
-		t := ob.Col.Table
-		col := ob.Col.Name
-
-		if ob.Var != "" {
-			t = fmt.Sprintf("_gj_ob_%s_%s", ob.Col.Table, ob.Col.Name)
-			col = "ord"
-		} else {
-			if t == "" {
-				t = sel.Ti.Name
-			}
-			if t == sel.Ti.Name {
-				if sel.ID >= 0 {
-					t = fmt.Sprintf("%s_%d", t, sel.ID)
-				}
-			} else {
-				t = fmt.Sprintf("%s_0", t)
-			}
-		}
-		r.ColWithTable(t, col)
-		ctx.WriteString(fmt.Sprintf(` AS [_ord_%d]`, j))
-	}
-
-	// Render nested children as inline subqueries
-	for _, cid := range sel.Children {
-		csel := r.GetChild(cid)
-		if csel == nil || csel.SkipRender == qcode.SkipTypeRemote || csel.SkipRender == qcode.SkipTypeDrop {
-			continue
-		}
-		if i != 0 {
-			ctx.WriteString(`, `)
-		}
-
-		if csel.SkipRender == qcode.SkipTypeUserNeeded || csel.SkipRender == qcode.SkipTypeBlocked ||
-			csel.SkipRender == qcode.SkipTypeNulled {
-			ctx.WriteString(`NULL AS `)
-			ctx.Quote(csel.FieldName)
-			i++
-			continue
-		}
-
-		ctx.WriteString(`JSON_QUERY(`)
-		r.RenderInlineChild(sel, csel)
-		ctx.WriteString(`) AS `)
-		ctx.Quote(csel.FieldName)
-		i++
-	}
-
 }
 
 func (d *MSSQLDialect) renderFromTable(ctx Context, r InlineChildRenderer, sel *qcode.Select, psel *qcode.Select) {
@@ -2452,12 +2190,13 @@ func (d *MSSQLDialect) renderArrayColumnExists(ctx Context, r InlineChildRendere
 
 	ctx.WriteString(`) WHERE [value] IN (`)
 
-	if ex.Right.ValType == qcode.ValVar {
+	switch ex.Right.ValType {
+	case qcode.ValVar:
 		// Variable list: use OPENJSON to unpack
 		ctx.WriteString(`SELECT [value] FROM OPENJSON(`)
 		ctx.AddParam(Param{Name: ex.Right.Val, Type: "json", IsArray: true})
 		ctx.WriteString(`)`)
-	} else if ex.Right.ValType == qcode.ValList {
+	case qcode.ValList:
 		// Static list: render inline values
 		for i := range ex.Right.ListVal {
 			if i != 0 {
@@ -3347,9 +3086,7 @@ func (d *MSSQLDialect) ModifySelectsForMutation(qc *qcode.QCode) {
 		}
 
 		// Set the WHERE clause
-		if exp != nil {
-			sel.Where.Exp = exp
-		}
+		sel.Where.Exp = exp
 	}
 }
 
@@ -3521,80 +3258,6 @@ func (d *MSSQLDialect) renderFieldFilterVal(ctx Context, ex *qcode.Exp) {
 		ctx.AddParam(Param{Name: ex.Right.Val, Type: ex.Left.Col.Type})
 	default:
 		ctx.WriteString(ex.Right.Val)
-	}
-}
-
-// isRecursiveRelationshipExp checks if an expression references __rcte_ tables
-// (recursive CTE tables from qcode that need special handling in MSSQL)
-// Also returns true for OpNop which should be skipped
-func (d *MSSQLDialect) isRecursiveRelationshipExp(exp *qcode.Exp) bool {
-	if exp == nil {
-		return false
-	}
-	// OpNop should be skipped (treated as a "recursive" expression to filter out)
-	if exp.Op == qcode.OpNop {
-		return true
-	}
-	// Check if left side references __rcte_ table
-	if exp.Left.Table != "" && len(exp.Left.Table) > 7 && exp.Left.Table[:7] == "__rcte_" {
-		return true
-	}
-	// Check if right side references __rcte_ table
-	if exp.Right.Table != "" && len(exp.Right.Table) > 7 && exp.Right.Table[:7] == "__rcte_" {
-		return true
-	}
-	return false
-}
-
-// hasNonRecursiveChildren checks if an AND/OR expression has children that are not recursive relationship filters
-func (d *MSSQLDialect) hasNonRecursiveChildren(exp *qcode.Exp) bool {
-	if exp == nil {
-		return false
-	}
-	if exp.Op == qcode.OpAnd || exp.Op == qcode.OpOr {
-		for _, child := range exp.Children {
-			if !d.isRecursiveRelationshipExp(child) {
-				return true
-			}
-		}
-		return false
-	}
-	return !d.isRecursiveRelationshipExp(exp)
-}
-
-// renderRecursiveBaseWhere renders WHERE clause for recursive CTE base case,
-// filtering out recursive relationship conditions (those referencing __rcte_ tables)
-func (d *MSSQLDialect) renderRecursiveBaseWhere(ctx Context, r InlineChildRenderer, psel, sel *qcode.Select, exp *qcode.Exp) {
-	if exp == nil {
-		return
-	}
-
-	if exp.Op == qcode.OpAnd {
-		first := true
-		for _, child := range exp.Children {
-			if d.isRecursiveRelationshipExp(child) {
-				continue
-			}
-			if !first {
-				ctx.WriteString(` AND `)
-			}
-			d.renderExp(ctx, r, psel, sel, child)
-			first = false
-		}
-	} else if exp.Op == qcode.OpOr {
-		first := true
-		for _, child := range exp.Children {
-			if d.isRecursiveRelationshipExp(child) {
-				continue
-			}
-			if !first {
-				ctx.WriteString(` OR `)
-			}
-			d.renderExp(ctx, r, psel, sel, child)
-			first = false
-		}
-	} else if !d.isRecursiveRelationshipExp(exp) {
-		d.renderExp(ctx, r, psel, sel, exp)
 	}
 }
 

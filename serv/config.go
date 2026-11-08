@@ -999,16 +999,16 @@ func (c *Config) settingExplicit(key string) bool {
 // batteries-included while preserving every explicit YAML/environment value.
 // Production and directly-constructed Go configurations retain literal values.
 func applyRuntimeModeDefaults(c *Config) {
-	if c == nil || !c.parsedConfig || (c.Core.Mode != "dev" && c.Core.Mode != "agentic") {
+	if c == nil || !c.parsedConfig || (c.Mode != "dev" && c.Mode != "agentic") {
 		return
 	}
 
 	artifactsEnabledExplicit := c.settingExplicit("artifacts.enabled")
 	artifactsSourceExplicit := c.settingExplicit("artifacts.source")
 	if !artifactsEnabledExplicit {
-		c.Core.Artifacts.Enabled = true
+		c.Artifacts.Enabled = true
 		if !artifactsSourceExplicit {
-			c.Core.Artifacts.Source = ""
+			c.Artifacts.Source = ""
 			c.managedArtifactStore = true
 		}
 	}
@@ -1019,19 +1019,19 @@ func applyRuntimeModeDefaults(c *Config) {
 	}
 
 	if !c.settingExplicit("watches.enabled") {
-		c.Core.Watches.Enabled = c.Core.Artifacts.Enabled
+		c.Watches.Enabled = c.Artifacts.Enabled
 	}
-	if c.Core.Watches.Enabled && !c.settingExplicit("watches.runner") {
-		c.Core.Watches.Runner = "all"
+	if c.Watches.Enabled && !c.settingExplicit("watches.runner") {
+		c.Watches.Runner = "all"
 	}
 	if !c.settingExplicit("tasks.enabled") {
-		c.Core.Tasks.Enabled = c.Core.Artifacts.Enabled
+		c.Tasks.Enabled = c.Artifacts.Enabled
 	}
 	if !c.settingExplicit("threads.enabled") {
-		c.Core.Threads.Enabled = c.Core.Artifacts.Enabled
+		c.Threads.Enabled = c.Artifacts.Enabled
 	}
 	if !c.settingExplicit("memory.enabled") {
-		c.Memory.Enabled = c.Core.Artifacts.Enabled
+		c.Memory.Enabled = c.Artifacts.Enabled
 	}
 
 	if !c.settingExplicit("agent.enabled") {
@@ -1049,7 +1049,7 @@ func normalizeWebUIDefault(c *Config, explicit bool) {
 	if c == nil || explicit {
 		return
 	}
-	c.Serv.WebUI = c.Core.Mode == "dev" || c.Core.Mode == "agentic"
+	c.WebUI = c.Mode == "dev" || c.Mode == "agentic"
 }
 
 func webUISettingExplicit(v *viper.Viper) bool {
@@ -1118,7 +1118,7 @@ func normalizeConfigMode(c *Config) error {
 	if c.Serv.Production {
 		c.Core.Production = true
 	}
-	if err := c.Core.NormalizeMode(); err != nil {
+	if err := c.NormalizeMode(); err != nil {
 		return err
 	}
 	return nil
@@ -1153,7 +1153,7 @@ func normalizeAgentConfig(c *Config) error {
 	// the worker answers single questions and nothing else.
 	if !c.Agent.Lead.Enabled {
 		for _, key := range []string{"threads.enabled", "memory.enabled"} {
-			if c.settingExplicit(key) && ((key == "threads.enabled" && c.Core.Threads.Enabled) || (key == "memory.enabled" && c.Memory.Enabled)) {
+			if c.settingExplicit(key) && ((key == "threads.enabled" && c.Threads.Enabled) || (key == "memory.enabled" && c.Memory.Enabled)) {
 				return fmt.Errorf("%s requires agent.lead.enabled", key)
 			}
 		}
@@ -1429,10 +1429,10 @@ func (c *Config) EffectiveSettings() map[string]any {
 	// Mode-aware defaults are applied after unmarshalling so direct Go struct
 	// construction keeps literal semantics. Overlay those resolved values for
 	// config tooling without persisting the private managed-store identifier.
-	setEffectiveSetting(settings, "artifacts.enabled", c.Core.Artifacts.Enabled)
-	setEffectiveSetting(settings, "watches.enabled", c.Core.Watches.Enabled)
-	setEffectiveSetting(settings, "watches.runner", c.Core.Watches.Runner)
-	setEffectiveSetting(settings, "tasks.enabled", c.Core.Tasks.Enabled)
+	setEffectiveSetting(settings, "artifacts.enabled", c.Artifacts.Enabled)
+	setEffectiveSetting(settings, "watches.enabled", c.Watches.Enabled)
+	setEffectiveSetting(settings, "watches.runner", c.Watches.Runner)
+	setEffectiveSetting(settings, "tasks.enabled", c.Tasks.Enabled)
 	setEffectiveSetting(settings, "agent.enabled", c.Agent.Enabled)
 	setEffectiveSetting(settings, "mcp.include_tools_with_agent", c.MCP.IncludeToolsWithAgent)
 	return settings

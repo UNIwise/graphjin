@@ -170,7 +170,7 @@ func TestHandleApplyDatabaseSetup_BlocksUnverifiedByDefault(t *testing.T) {
 	if out.Next.RecommendedTool != "" {
 		t.Fatalf("expected no recommended tool for removed test_database_connection tool, got %s", out.Next.RecommendedTool)
 	}
-	if len(ms.service.conf.Core.Databases) != 0 {
+	if len(ms.service.conf.Databases) != 0 {
 		t.Fatal("expected no config mutation when candidate is unverified")
 	}
 }
@@ -197,7 +197,7 @@ func TestHandleApplyDatabaseSetup_AllowsUnverifiedOverride(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	_ = assertToolSuccess(t, res)
-	if len(ms.service.conf.Core.Databases) != 1 {
+	if len(ms.service.conf.Databases) != 1 {
 		t.Fatal("expected config mutation when allow_unverified_apply=true")
 	}
 }

@@ -133,21 +133,6 @@ func systemOrderValue(row map[string]any, order qcode.OrderBy) any {
 	return nil
 }
 
-func findSeekExp(ex *qcode.Exp) *qcode.Exp {
-	if ex == nil {
-		return nil
-	}
-	if isSeekExp(ex) {
-		return ex
-	}
-	for _, child := range ex.Children {
-		if found := findSeekExp(child); found != nil {
-			return found
-		}
-	}
-	return nil
-}
-
 func isSeekExp(ex *qcode.Exp) bool {
 	return ex != nil &&
 		ex.Op == qcode.OpOr &&

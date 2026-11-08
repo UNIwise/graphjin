@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strings"
 	"time"
 
 	"github.com/dosco/graphjin/serv/v3"
@@ -210,13 +208,6 @@ func printMCPConfig(conf *serv.Config, demoMode bool) {
 		log.Fatalf("Failed to get absolute config path: %s", err)
 	}
 
-	// Get app name from config, default to "graphjin"
-	// Use slugified version for MCP server name (no spaces/special chars)
-	appName := conf.AppName
-	if appName == "" {
-		appName = "graphjin"
-	}
-
 	// Build args
 	var cmdArgs []string
 	if demoMode {
@@ -242,26 +233,4 @@ func printMCPConfig(conf *serv.Config, demoMode bool) {
 	}
 
 	fmt.Println(string(output))
-}
-
-// slugify converts a string to a URL-safe slug
-// e.g., "Webshop Development" -> "webshop-development"
-func slugify(s string) string {
-	// Convert to lowercase
-	s = strings.ToLower(s)
-	// Replace spaces and underscores with hyphens
-	s = strings.ReplaceAll(s, " ", "-")
-	s = strings.ReplaceAll(s, "_", "-")
-	// Remove any character that isn't alphanumeric or hyphen
-	reg := regexp.MustCompile(`[^a-z0-9-]+`)
-	s = reg.ReplaceAllString(s, "")
-	// Remove multiple consecutive hyphens
-	reg = regexp.MustCompile(`-+`)
-	s = reg.ReplaceAllString(s, "-")
-	// Trim leading/trailing hyphens
-	s = strings.Trim(s, "-")
-	if s == "" {
-		return "graphjin"
-	}
-	return s
 }

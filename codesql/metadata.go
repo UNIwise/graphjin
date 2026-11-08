@@ -4,7 +4,6 @@ package codesql
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 )
 
@@ -44,10 +43,4 @@ func (idx *indexer) upsertLanguageMetadata(ctx context.Context) error {
 		}
 	}
 	return tx.Commit()
-}
-
-func hasFile(ctx context.Context, tx *sql.Tx, path string) bool {
-	var n int
-	_ = tx.QueryRowContext(ctx, `SELECT 1 FROM code_files WHERE path = ?`, path).Scan(&n)
-	return n == 1
 }

@@ -395,7 +395,6 @@ type RoleInfo struct {
 
 // handleGetCurrentConfig returns the current configuration
 func (ms *mcpServer) handleGetCurrentConfig(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	ctx = ms.effectiveContext(ctx)
 	args := req.GetArguments()
 	section, _ := args["section"].(string)
 	if section == "" {
@@ -455,8 +454,8 @@ func (ms *mcpServer) handleGetCurrentConfig(ctx context.Context, req mcp.CallToo
 // getActiveDatabase returns the name of the first configured database (sorted).
 // All databases are equal; this returns the first entry in sorted order for determinism.
 func (ms *mcpServer) getActiveDatabase() string {
-	names := make([]string, 0, len(ms.service.conf.Core.Databases))
-	for name := range ms.service.conf.Core.Databases {
+	names := make([]string, 0, len(ms.service.conf.Databases))
+	for name := range ms.service.conf.Databases {
 		names = append(names, name)
 	}
 	sort.Strings(names)
@@ -888,7 +887,7 @@ func (ms *mcpServer) handleUpdateCurrentConfig(ctx context.Context, req mcp.Call
 	}()
 
 	args := req.GetArguments()
-	sourceMode := ms.service != nil && ms.service.conf != nil && ms.service.conf.Core.IsSourcesUsed()
+	sourceMode := ms.service != nil && ms.service.conf != nil && ms.service.conf.IsSourcesUsed()
 	mode, expectedRev, patchHash, previewID, gateFailure := ms.sourceModeConfigGate(ctx, args)
 	if sourceMode && gateFailure != nil {
 		return ms.finishConfigUpdate(ctx, *gateFailure)
@@ -2644,19 +2643,19 @@ func applyServConfigPatch(conf *Config, patch map[string]any) {
 	for key, raw := range patch {
 		switch key {
 		case "agent":
-			applyAgentConfigPatch(&conf.Serv.Agent, raw.(map[string]any), conf)
+			applyAgentConfigPatch(&conf.Agent, raw.(map[string]any), conf)
 		case "log_level":
-			conf.Serv.LogLevel, _ = raw.(string)
+			conf.LogLevel, _ = raw.(string)
 		case "log_format":
-			conf.Serv.LogFormat, _ = raw.(string)
+			conf.LogFormat, _ = raw.(string)
 		case "web_ui":
-			conf.Serv.WebUI, _ = raw.(bool)
+			conf.WebUI, _ = raw.(bool)
 		case "http_compress":
-			conf.Serv.HTTPGZip, _ = raw.(bool)
+			conf.HTTPGZip, _ = raw.(bool)
 		case "server_timing":
-			conf.Serv.ServerTiming, _ = raw.(bool)
+			conf.ServerTiming, _ = raw.(bool)
 		case "rate_limiter":
-			applyRateLimiterPatch(&conf.Serv.RateLimiter, raw.(map[string]any))
+			applyRateLimiterPatch(&conf.RateLimiter, raw.(map[string]any))
 		}
 	}
 }
@@ -2723,7 +2722,7 @@ func validateAgentModelSourcePatch(conf *Config, m map[string]any) error {
 			return err
 		}
 	}
-	if conf == nil || !(hasProvider || hasKeyEnv || hasKeyFile) {
+	if conf == nil || (!hasProvider && !hasKeyEnv && !hasKeyFile) {
 		return nil
 	}
 	// Check the agent config the patch produces: a provider switch must still
@@ -2917,27 +2916,6 @@ func parseDBConfig(m map[string]any) (core.DatabaseConfig, error) {
 	}
 
 	return conf, nil
-}
-
-func parseMetadataConfig(m map[string]any, current core.MetadataConfig) core.MetadataConfig {
-	if enabled, ok := m["enabled"].(bool); ok {
-		current.Enabled = &enabled
-	}
-	if database, ok := m["database"].(string); ok {
-		current.Database = database
-	}
-	if auto, ok := m["auto_code_relations"].(bool); ok {
-		current.AutoCodeRelations = &auto
-	}
-	if raw, ok := m["code_databases"].([]any); ok {
-		current.CodeDatabases = current.CodeDatabases[:0]
-		for _, v := range raw {
-			if s, ok := v.(string); ok && s != "" {
-				current.CodeDatabases = append(current.CodeDatabases, s)
-			}
-		}
-	}
-	return current
 }
 
 // parseTableConfig parses a table config from a map
@@ -3780,7 +3758,7 @@ func (ms *mcpServer) prepareStagedRuntime(stagedCore *core.Config, createIfNotEx
 
 	if len(stagedCore.Databases) > 0 {
 		currentDBs := ms.service.dbs
-		currentConfigs := ms.service.conf.Core.Databases
+		currentConfigs := ms.service.conf.Databases
 
 		dbNames := make([]string, 0, len(stagedCore.Databases))
 		for name := range stagedCore.Databases {
@@ -3881,7 +3859,8 @@ func (ms *mcpServer) prepareStagedRuntime(stagedCore *core.Config, createIfNotEx
 		}
 	}
 	if stage.systemNanoDB != nil {
-		scoped := *ms.service
+		scoped := *ms.service //nolint:govet // configLock is replaced below, as in scopedCopy
+		scoped.configLock = ms.service.configLocker()
 		scopedConf := *ms.service.conf
 		scopedConf.Core = *stagedCore
 		scoped.conf = &scopedConf
@@ -3923,7 +3902,7 @@ func (ms *mcpServer) prepareSourceScopedRuntime(stagedCore *core.Config, changed
 	}
 
 	currentDBs := ms.service.dbs
-	currentConfigs := ms.service.conf.Core.Databases
+	currentConfigs := ms.service.conf.Databases
 	dbNames := make([]string, 0, len(stagedCore.Databases))
 	for name := range stagedCore.Databases {
 		dbNames = append(dbNames, name)
@@ -4084,7 +4063,7 @@ func (ms *mcpServer) recordConfigUpdateRuntimeEvent(ctx context.Context, result 
 func (ms *mcpServer) commitSourceScopedRuntime(stagedCore core.Config, stage *stagedRuntimeState, plan configRuntimeReloadPlan) error {
 	oldDBs := ms.service.dbs
 	oldManagedDBs := ms.service.managedDBs
-	hadDatabaseMap := len(ms.service.conf.Core.Databases) > 0
+	hadDatabaseMap := len(ms.service.conf.Databases) > 0
 	prevLegacyDB := ms.service.conf.DB
 	prevDBType := ms.service.conf.DBType
 
@@ -4092,7 +4071,8 @@ func (ms *mcpServer) commitSourceScopedRuntime(stagedCore core.Config, stage *st
 	if err := ms.service.gj.ReloadConfigDatabases(stage.runtimeCore, plan.changedSources, opts...); err != nil {
 		return err
 	}
-	scoped := *ms.service
+	scoped := *ms.service //nolint:govet // configLock is replaced below, as in scopedCopy
+	scoped.configLock = ms.service.configLocker()
 	scopedConf := *ms.service.conf
 	scopedConf.Core = stagedCore
 	scoped.conf = &scopedConf
@@ -4187,7 +4167,7 @@ func (ms *mcpServer) commitStagedRuntime(stagedCore core.Config, stage *stagedRu
 	oldGJ := ms.service.gj
 	oldDBs := ms.service.dbs
 	oldManagedDBs := ms.service.managedDBs
-	hadDatabaseMap := len(ms.service.conf.Core.Databases) > 0
+	hadDatabaseMap := len(ms.service.conf.Databases) > 0
 	prevLegacyDB := ms.service.conf.DB
 	prevDBType := ms.service.conf.DBType
 
@@ -4275,13 +4255,13 @@ func sqlDBMapContains(databases map[string]*sql.DB, target *sql.DB) bool {
 // syncDBFromDatabases copies the first entry from conf.Core.Databases
 // into conf.DB so that newDBOnce/newDB can use it (they read from conf.DB)
 func syncDBFromDatabases(conf *Config) bool {
-	if len(conf.Core.Databases) == 0 {
+	if len(conf.Databases) == 0 {
 		return false
 	}
 
 	// Use the first entry (sorted for deterministic behavior)
-	names := make([]string, 0, len(conf.Core.Databases))
-	for name := range conf.Core.Databases {
+	names := make([]string, 0, len(conf.Databases))
+	for name := range conf.Databases {
 		if !isInternalArtifactDatabase(&conf.Core, name) {
 			names = append(names, name)
 		}
@@ -4290,7 +4270,7 @@ func syncDBFromDatabases(conf *Config) bool {
 	if len(names) == 0 {
 		return false
 	}
-	dbConf := conf.Core.Databases[names[0]]
+	dbConf := conf.Databases[names[0]]
 
 	conf.DB.Type = dbConf.Type
 	conf.DB.Host = dbConf.Host
@@ -4421,7 +4401,7 @@ func (ms *mcpServer) ensureDBConnections() {
 func (ms *mcpServer) tryInitializeGraphJin(createIfNotExists bool) ([]string, error) {
 	s := ms.service
 
-	if len(s.conf.Core.Databases) == 0 {
+	if len(s.conf.Databases) == 0 {
 		return nil, fmt.Errorf("no database configuration found in databases map")
 	}
 	if s.runtimeCore == nil {
@@ -4514,15 +4494,15 @@ func (ms *mcpServer) saveConfigToDisk() error {
 	// (database/metadata/catalog/filesystems/openapi) that were never on
 	// disk. WriteConfig would serialize them and the next reload rejects
 	// them via validateIsSourcesUsed. Write a sanitized copy instead.
-	if ms.service.conf.Core.IsSourcesUsed() {
+	if ms.service.conf.IsSourcesUsed() {
 		settings := v.AllSettings()
 		for _, k := range []string{"database", "databases", "metadata", "catalog", "filesystems", "openapi", "openapi_specs_dir"} {
 			delete(settings, k)
 		}
-		if len(ms.service.conf.Core.System.Capabilities) == 0 && len(ms.service.conf.Core.System.RootAccess) == 0 {
+		if len(ms.service.conf.System.Capabilities) == 0 && len(ms.service.conf.System.RootAccess) == 0 {
 			delete(settings, "system")
 		}
-		if strings.TrimSpace(ms.service.conf.Core.Workflows.Path) == "" && len(ms.service.conf.Core.Workflows.Capabilities) == 0 {
+		if strings.TrimSpace(ms.service.conf.Workflows.Path) == "" && len(ms.service.conf.Workflows.Capabilities) == 0 {
 			delete(settings, "workflows")
 		}
 		nv := viper.New()
@@ -4613,19 +4593,19 @@ func setServPatchViper(v *viper.Viper, conf *Config, patch map[string]any) {
 	for key := range patch {
 		switch key {
 		case "agent":
-			v.Set("agent", conf.Serv.Agent)
+			v.Set("agent", conf.Agent)
 		case "log_level":
-			v.Set("log_level", conf.Serv.LogLevel)
+			v.Set("log_level", conf.LogLevel)
 		case "log_format":
-			v.Set("log_format", conf.Serv.LogFormat)
+			v.Set("log_format", conf.LogFormat)
 		case "web_ui":
-			v.Set("web_ui", conf.Serv.WebUI)
+			v.Set("web_ui", conf.WebUI)
 		case "http_compress":
-			v.Set("http_compress", conf.Serv.HTTPGZip)
+			v.Set("http_compress", conf.HTTPGZip)
 		case "server_timing":
-			v.Set("server_timing", conf.Serv.ServerTiming)
+			v.Set("server_timing", conf.ServerTiming)
 		case "rate_limiter":
-			v.Set("rate_limiter", conf.Serv.RateLimiter)
+			v.Set("rate_limiter", conf.RateLimiter)
 		}
 	}
 }

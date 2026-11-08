@@ -28,14 +28,14 @@ func TestLoadAndCallExpandsNestedTokenExchangeCredentials(t *testing.T) {
 				t.Error(err)
 			}
 			if body.Credentials.Client != "example-client" || body.Credentials.Secret != "example-secret" || len(body.Audiences) != 1 || body.Audiences[0] != "records" || len(body.Options) != 1 || body.Options[0].Audience != "records" {
-				http.Error(w, "credentials not expanded", 401)
+				http.Error(w, "credentials not expanded", http.StatusUnauthorized)
 				return
 			}
 			_, _ = w.Write([]byte(`{"access_token":"example-token","expires_in":3600}`))
 			return
 		}
 		if r.Header.Get("Authorization") != "Bearer example-token" {
-			http.Error(w, "token missing", 401)
+			http.Error(w, "token missing", http.StatusUnauthorized)
 			return
 		}
 		_, _ = w.Write([]byte(`{"id":1}`))

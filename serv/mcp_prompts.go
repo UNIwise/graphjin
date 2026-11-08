@@ -43,7 +43,7 @@ func (ms *mcpServer) registerPrompts() {
 
 func (ms *mcpServer) requirePromptDB() error {
 	if ms.service.gj == nil || !ms.service.gj.SchemaReady() {
-		return fmt.Errorf(errNoDB)
+		return fmt.Errorf("%s", errNoDB)
 	}
 	return nil
 }
@@ -76,8 +76,8 @@ func (ms *mcpServer) handleWriteWhereClause(ctx context.Context, req mcp.GetProm
 	// Build the prompt content
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("# Where Clause Guide for Table: %s\n\n", table))
-	sb.WriteString(fmt.Sprintf("**Filtering Intent**: %s\n\n", intent))
+	fmt.Fprintf(&sb, "# Where Clause Guide for Table: %s\n\n", table)
+	fmt.Fprintf(&sb, "**Filtering Intent**: %s\n\n", intent)
 
 	sb.WriteString("## Available Columns and Valid Operators\n\n")
 	sb.WriteString("| Column | Type | Nullable | Valid Operators |\n")
@@ -89,8 +89,8 @@ func (ms *mcpServer) handleWriteWhereClause(ctx context.Context, req mcp.GetProm
 		if col.Nullable {
 			nullable = "Yes"
 		}
-		sb.WriteString(fmt.Sprintf("| `%s` | %s | %s | %s |\n",
-			col.Name, col.Type, nullable, strings.Join(operators, ", ")))
+		fmt.Fprintf(&sb, "| `%s` | %s | %s | %s |\n",
+			col.Name, col.Type, nullable, strings.Join(operators, ", "))
 	}
 
 	sb.WriteString("\n## Where Clause Syntax\n\n")
@@ -201,16 +201,16 @@ func (ms *mcpServer) handleWriteQuery(ctx context.Context, req mcp.GetPromptRequ
 
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("# Query Guide for Table: %s\n\n", table))
+	fmt.Fprintf(&sb, "# Query Guide for Table: %s\n\n", table)
 
 	// Intent summary
 	if fields != "" || filterIntent != "" {
 		sb.WriteString("**Intent**: ")
 		if fields != "" {
-			sb.WriteString(fmt.Sprintf("Select %s", fields))
+			fmt.Fprintf(&sb, "Select %s", fields)
 		}
 		if filterIntent != "" {
-			sb.WriteString(fmt.Sprintf(", filter by %s", filterIntent))
+			fmt.Fprintf(&sb, ", filter by %s", filterIntent)
 		}
 		sb.WriteString("\n\n")
 	}
@@ -230,8 +230,8 @@ func (ms *mcpServer) handleWriteQuery(ctx context.Context, req mcp.GetPromptRequ
 		if col.Nullable {
 			nullable = "Yes"
 		}
-		sb.WriteString(fmt.Sprintf("| `%s` | %s | %s | %s |\n",
-			col.Name, col.Type, nullable, key))
+		fmt.Fprintf(&sb, "| `%s` | %s | %s | %s |\n",
+			col.Name, col.Type, nullable, key)
 	}
 	sb.WriteString("\n")
 
@@ -241,13 +241,13 @@ func (ms *mcpServer) handleWriteQuery(ctx context.Context, req mcp.GetPromptRequ
 		if len(schema.Relationships.Outgoing) > 0 {
 			sb.WriteString("**Outgoing** (this table references):\n")
 			for _, rel := range schema.Relationships.Outgoing {
-				sb.WriteString(fmt.Sprintf("- `%s` → %s (%s)\n", rel.Name, rel.Table, rel.Type))
+				fmt.Fprintf(&sb, "- `%s` → %s (%s)\n", rel.Name, rel.Table, rel.Type)
 			}
 		}
 		if len(schema.Relationships.Incoming) > 0 {
 			sb.WriteString("\n**Incoming** (tables that reference this):\n")
 			for _, rel := range schema.Relationships.Incoming {
-				sb.WriteString(fmt.Sprintf("- `%s` ← %s (%s)\n", rel.Name, rel.Table, rel.Type))
+				fmt.Fprintf(&sb, "- `%s` ← %s (%s)\n", rel.Name, rel.Table, rel.Type)
 			}
 		}
 		sb.WriteString("\n")
@@ -293,11 +293,11 @@ func (ms *mcpServer) handleWriteQuery(ctx context.Context, req mcp.GetPromptRequ
 		whereStr = ", where: { /* see filter operators below */ }"
 	}
 
-	sb.WriteString(fmt.Sprintf(`{
+	fmt.Fprintf(&sb, `{
   %s(%s%s) {
     %s%s
   }%s
-}`, table, paginationStr, whereStr, fieldList, relIncludes, cursorNote))
+}`, table, paginationStr, whereStr, fieldList, relIncludes, cursorNote)
 	sb.WriteString("\n```\n\n")
 
 	// Filter operators (if filter intent provided)
@@ -320,7 +320,7 @@ func (ms *mcpServer) handleWriteQuery(ctx context.Context, req mcp.GetPromptRequ
 	// Aggregations
 	sb.WriteString("## Available Aggregations\n\n")
 	sb.WriteString("```graphql\n")
-	sb.WriteString(fmt.Sprintf("{ %s { count_id } }  # Count rows\n", table))
+	fmt.Fprintf(&sb, "{ %s { count_id } }  # Count rows\n", table)
 	// Find two numeric columns for a richer example (arithmetic needs at
 	// least one; the second demonstrates the expression aggregate form).
 	var firstNumeric, secondNumeric string
@@ -368,8 +368,8 @@ func (ms *mcpServer) handleWriteQuery(ctx context.Context, req mcp.GetPromptRequ
 		orderCol = schema.Columns[0].Name
 	}
 	if firstNumeric != "" {
-		sb.WriteString(fmt.Sprintf("{ %s { sum_%s avg_%s min_%s max_%s } }  # Numeric aggregations\n",
-			table, firstNumeric, firstNumeric, firstNumeric, firstNumeric))
+		fmt.Fprintf(&sb, "{ %s { sum_%s avg_%s min_%s max_%s } }  # Numeric aggregations\n",
+			table, firstNumeric, firstNumeric, firstNumeric, firstNumeric)
 	}
 	sb.WriteString("```\n\n")
 
@@ -379,16 +379,16 @@ func (ms *mcpServer) handleWriteQuery(ctx context.Context, req mcp.GetPromptRequ
 		sb.WriteString("Use analytics directives for running metrics, moving averages, ranks, previous/next values, ")
 		sb.WriteString("and first/last values without collapsing rows like a plain aggregate.\n\n")
 		sb.WriteString("```graphql\n")
-		sb.WriteString(fmt.Sprintf("{ %s(limit: 100) {\n", table))
-		sb.WriteString(fmt.Sprintf("    %s\n", partitionCol))
+		fmt.Fprintf(&sb, "{ %s(limit: 100) {\n", table)
+		fmt.Fprintf(&sb, "    %s\n", partitionCol)
 		if orderCol != partitionCol {
-			sb.WriteString(fmt.Sprintf("    %s\n", orderCol))
+			fmt.Fprintf(&sb, "    %s\n", orderCol)
 		}
-		sb.WriteString(fmt.Sprintf("    %s\n", firstNumeric))
-		sb.WriteString(fmt.Sprintf("    running_%s: %s @running(aggregate: sum, by: \"%s\", orderBy: { %s: asc })\n", firstNumeric, firstNumeric, partitionCol, orderCol))
-		sb.WriteString(fmt.Sprintf("    moving_avg_%s: %s @moving(aggregate: avg, rows: 6, by: \"%s\", orderBy: { %s: asc })\n", firstNumeric, firstNumeric, partitionCol, orderCol))
-		sb.WriteString(fmt.Sprintf("    previous_%s: %s @previous(by: \"%s\", orderBy: { %s: asc })\n", firstNumeric, firstNumeric, partitionCol, orderCol))
-		sb.WriteString(fmt.Sprintf("    rank_by_%s: %s @rank(by: \"%s\", order: desc)\n", firstNumeric, firstNumeric, partitionCol))
+		fmt.Fprintf(&sb, "    %s\n", firstNumeric)
+		fmt.Fprintf(&sb, "    running_%s: %s @running(aggregate: sum, by: \"%s\", orderBy: { %s: asc })\n", firstNumeric, firstNumeric, partitionCol, orderCol)
+		fmt.Fprintf(&sb, "    moving_avg_%s: %s @moving(aggregate: avg, rows: 6, by: \"%s\", orderBy: { %s: asc })\n", firstNumeric, firstNumeric, partitionCol, orderCol)
+		fmt.Fprintf(&sb, "    previous_%s: %s @previous(by: \"%s\", orderBy: { %s: asc })\n", firstNumeric, firstNumeric, partitionCol, orderCol)
+		fmt.Fprintf(&sb, "    rank_by_%s: %s @rank(by: \"%s\", order: desc)\n", firstNumeric, firstNumeric, partitionCol)
 		sb.WriteString("  }\n")
 		sb.WriteString("}\n")
 		sb.WriteString("```\n\n")
@@ -405,11 +405,11 @@ func (ms *mcpServer) handleWriteQuery(ctx context.Context, req mcp.GetPromptRequ
 		sb.WriteString("Leaves: bare identifier (column), quoted string (qualified column), ")
 		sb.WriteString("number (literal), `$var` (bind).\n\n")
 		sb.WriteString("```graphql\n")
-		sb.WriteString(fmt.Sprintf("# SUM(%s × %s) as one server-side aggregate\n", firstNumeric, secondNumeric))
-		sb.WriteString(fmt.Sprintf("{ %s { revenue: sum(expr: { mul: [%s, %s] }) } }\n\n", table, firstNumeric, secondNumeric))
+		fmt.Fprintf(&sb, "# SUM(%s × %s) as one server-side aggregate\n", firstNumeric, secondNumeric)
+		fmt.Fprintf(&sb, "{ %s { revenue: sum(expr: { mul: [%s, %s] }) } }\n\n", table, firstNumeric, secondNumeric)
 		sb.WriteString("# Top N by computed metric — order_by on the alias\n")
-		sb.WriteString(fmt.Sprintf("{ %s(distinct: [id], order_by: { revenue: desc }, limit: 10) {\n", table))
-		sb.WriteString(fmt.Sprintf("    id revenue: sum(expr: { mul: [%s, %s] })\n", firstNumeric, secondNumeric))
+		fmt.Fprintf(&sb, "{ %s(distinct: [id], order_by: { revenue: desc }, limit: 10) {\n", table)
+		fmt.Fprintf(&sb, "    id revenue: sum(expr: { mul: [%s, %s] })\n", firstNumeric, secondNumeric)
 		sb.WriteString("  }\n")
 		sb.WriteString("}\n")
 		sb.WriteString("```\n")
@@ -469,10 +469,10 @@ func (ms *mcpServer) handleWriteMutation(ctx context.Context, req mcp.GetPromptR
 
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("# %s Mutation Guide for Table: %s\n\n", capitalizeFirst(operation), table))
+	fmt.Fprintf(&sb, "# %s Mutation Guide for Table: %s\n\n", capitalizeFirst(operation), table)
 
 	if dataIntent != "" {
-		sb.WriteString(fmt.Sprintf("**Intent**: %s\n\n", dataIntent))
+		fmt.Fprintf(&sb, "**Intent**: %s\n\n", dataIntent)
 	}
 
 	// Table schema (columns that can be set)
@@ -494,8 +494,8 @@ func (ms *mcpServer) handleWriteMutation(ctx context.Context, req mcp.GetPromptR
 		if col.Nullable {
 			nullable = "Yes"
 		}
-		sb.WriteString(fmt.Sprintf("| `%s` | %s | %s | %s |\n",
-			col.Name, col.Type, nullable, notes))
+		fmt.Fprintf(&sb, "| `%s` | %s | %s | %s |\n",
+			col.Name, col.Type, nullable, notes)
 	}
 	sb.WriteString("\n")
 
@@ -506,10 +506,10 @@ func (ms *mcpServer) handleWriteMutation(ctx context.Context, req mcp.GetPromptR
 	case "insert":
 		sb.WriteString("### Insert (single record)\n")
 		sb.WriteString("```graphql\n")
-		sb.WriteString(fmt.Sprintf("mutation {\n  %s(insert: {\n", table))
+		fmt.Fprintf(&sb, "mutation {\n  %s(insert: {\n", table)
 		for _, col := range schema.Columns {
 			if !col.PrimaryKey {
-				sb.WriteString(fmt.Sprintf("    %s: $%s\n", col.Name, col.Name))
+				fmt.Fprintf(&sb, "    %s: $%s\n", col.Name, col.Name)
 			}
 		}
 		sb.WriteString("  }) {\n    id\n  }\n}\n")
@@ -517,27 +517,27 @@ func (ms *mcpServer) handleWriteMutation(ctx context.Context, req mcp.GetPromptR
 
 		sb.WriteString("### Bulk Insert (multiple records)\n")
 		sb.WriteString("```graphql\n")
-		sb.WriteString(fmt.Sprintf("mutation {\n  %s(insert: $items) {  # $items is an array\n    id\n  }\n}\n", table))
+		fmt.Fprintf(&sb, "mutation {\n  %s(insert: $items) {  # $items is an array\n    id\n  }\n}\n", table)
 		sb.WriteString("```\n\n")
 
 	case "update":
 		sb.WriteString("### Update by ID\n")
 		sb.WriteString("```graphql\n")
-		sb.WriteString(fmt.Sprintf("mutation {\n  %s(id: $id, update: {\n    # fields to update\n  }) {\n    id\n  }\n}\n", table))
+		fmt.Fprintf(&sb, "mutation {\n  %s(id: $id, update: {\n    # fields to update\n  }) {\n    id\n  }\n}\n", table)
 		sb.WriteString("```\n\n")
 
 		sb.WriteString("### Update with Where clause\n")
 		sb.WriteString("```graphql\n")
-		sb.WriteString(fmt.Sprintf("mutation {\n  %s(where: { status: { eq: \"pending\" } }, update: {\n    status: \"processed\"\n  }) {\n    id\n  }\n}\n", table))
+		fmt.Fprintf(&sb, "mutation {\n  %s(where: { status: { eq: \"pending\" } }, update: {\n    status: \"processed\"\n  }) {\n    id\n  }\n}\n", table)
 		sb.WriteString("```\n\n")
 
 	case "upsert":
 		sb.WriteString("### Upsert (Insert or Update)\n")
 		sb.WriteString("```graphql\n")
-		sb.WriteString(fmt.Sprintf("mutation {\n  %s(upsert: {\n    id: $id  # If exists: update, else: insert\n", table))
+		fmt.Fprintf(&sb, "mutation {\n  %s(upsert: {\n    id: $id  # If exists: update, else: insert\n", table)
 		for _, col := range schema.Columns {
 			if !col.PrimaryKey {
-				sb.WriteString(fmt.Sprintf("    %s: $%s\n", col.Name, col.Name))
+				fmt.Fprintf(&sb, "    %s: $%s\n", col.Name, col.Name)
 			}
 		}
 		sb.WriteString("  }) {\n    id\n  }\n}\n")
@@ -546,12 +546,12 @@ func (ms *mcpServer) handleWriteMutation(ctx context.Context, req mcp.GetPromptR
 	case "delete":
 		sb.WriteString("### Delete by ID\n")
 		sb.WriteString("```graphql\n")
-		sb.WriteString(fmt.Sprintf("mutation {\n  %s(delete: true, where: { id: { eq: $id } }) {\n    id\n  }\n}\n", table))
+		fmt.Fprintf(&sb, "mutation {\n  %s(delete: true, where: { id: { eq: $id } }) {\n    id\n  }\n}\n", table)
 		sb.WriteString("```\n\n")
 
 		sb.WriteString("### Delete with Where clause\n")
 		sb.WriteString("```graphql\n")
-		sb.WriteString(fmt.Sprintf("mutation {\n  %s(delete: true, where: { status: { eq: \"cancelled\" } }) {\n    id\n  }\n}\n", table))
+		fmt.Fprintf(&sb, "mutation {\n  %s(delete: true, where: { status: { eq: \"cancelled\" } }) {\n    id\n  }\n}\n", table)
 		sb.WriteString("```\n\n")
 	}
 
@@ -561,30 +561,30 @@ func (ms *mcpServer) handleWriteMutation(ctx context.Context, req mcp.GetPromptR
 
 		sb.WriteString("### Create with nested record\n")
 		sb.WriteString("```graphql\n")
-		sb.WriteString(fmt.Sprintf("mutation {\n  %s(insert: {\n    name: $name\n", table))
+		fmt.Fprintf(&sb, "mutation {\n  %s(insert: {\n    name: $name\n", table)
 		if len(schema.Relationships.Outgoing) > 0 {
 			rel := schema.Relationships.Outgoing[0]
-			sb.WriteString(fmt.Sprintf("    %s: { name: $related_name }  # Creates new %s\n", rel.Name, rel.Table))
+			fmt.Fprintf(&sb, "    %s: { name: $related_name }  # Creates new %s\n", rel.Name, rel.Table)
 		}
 		sb.WriteString("  }) {\n    id\n  }\n}\n")
 		sb.WriteString("```\n\n")
 
 		sb.WriteString("### Connect to existing record\n")
 		sb.WriteString("```graphql\n")
-		sb.WriteString(fmt.Sprintf("mutation {\n  %s(insert: {\n    name: $name\n", table))
+		fmt.Fprintf(&sb, "mutation {\n  %s(insert: {\n    name: $name\n", table)
 		if len(schema.Relationships.Outgoing) > 0 {
 			rel := schema.Relationships.Outgoing[0]
-			sb.WriteString(fmt.Sprintf("    %s: { connect: { id: $%s_id } }  # Links to existing %s\n", rel.Name, rel.Name, rel.Table))
+			fmt.Fprintf(&sb, "    %s: { connect: { id: $%s_id } }  # Links to existing %s\n", rel.Name, rel.Name, rel.Table)
 		}
 		sb.WriteString("  }) {\n    id\n  }\n}\n")
 		sb.WriteString("```\n\n")
 
 		sb.WriteString("### Disconnect related record\n")
 		sb.WriteString("```graphql\n")
-		sb.WriteString(fmt.Sprintf("mutation {\n  %s(id: $id, update: {\n", table))
+		fmt.Fprintf(&sb, "mutation {\n  %s(id: $id, update: {\n", table)
 		if len(schema.Relationships.Outgoing) > 0 {
 			rel := schema.Relationships.Outgoing[0]
-			sb.WriteString(fmt.Sprintf("    %s: { disconnect: { id: $%s_id } }\n", rel.Name, rel.Name))
+			fmt.Fprintf(&sb, "    %s: { disconnect: { id: $%s_id } }\n", rel.Name, rel.Name)
 		}
 		sb.WriteString("  }) {\n    id\n  }\n}\n")
 		sb.WriteString("```\n\n")
@@ -596,7 +596,7 @@ func (ms *mcpServer) handleWriteMutation(ctx context.Context, req mcp.GetPromptR
 	sb.WriteString("```graphql\n")
 	sb.WriteString("mutation @constraint(variable: \"email\", format: \"email\")\n")
 	sb.WriteString("         @constraint(variable: \"name\", min: 1, max: 100) {\n")
-	sb.WriteString(fmt.Sprintf("  %s(insert: { email: $email, name: $name }) { id }\n", table))
+	fmt.Fprintf(&sb, "  %s(insert: { email: $email, name: $name }) { id }\n", table)
 	sb.WriteString("}\n")
 	sb.WriteString("```\n\n")
 	sb.WriteString("Available validation options: `format`, `min`, `max`, `required`, `requiredIf`, `greaterThan`, `lessThan`\n")
@@ -623,7 +623,7 @@ func isCodeSQLManagedMutationTable(table string) bool {
 
 func (ms *mcpServer) handleWriteCodeSQLMutationPrompt(operation, table string) (*mcp.GetPromptResult, error) {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("# %s Mutation Guide for Table: %s\n\n", capitalizeFirst(operation), table))
+	fmt.Fprintf(&sb, "# %s Mutation Guide for Table: %s\n\n", capitalizeFirst(operation), table)
 	sb.WriteString("## Workflow\n\n")
 	sb.WriteString("1. Query `gj_code` by `kind` first and request `code` or `code_context` plus `path` and `hash`.\n")
 	sb.WriteString("2. Use `kind: \"symbol\"`, `kind: \"file\"`, or `kind: \"db_reference\"` to find the right source item.\n")
@@ -744,33 +744,6 @@ func (ms *mcpServer) handleWriteCodeSQLMutationPrompt(operation, table string) (
 			mcp.NewPromptMessage(
 				mcp.RoleAssistant,
 				mcp.NewTextContent(sb.String()),
-			),
-		},
-	), nil
-}
-
-// handleFixQueryError analyzes query errors and provides structured fix
-// suggestions. The repair logic lives in buildFixQueryErrorRepair so the
-// tool variant can return both the markdown guide AND the structured
-// fields (kind, diagnosis, repaired_query, follow_up_tools).
-func (ms *mcpServer) handleFixQueryError(ctx context.Context, req mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
-	query := req.Params.Arguments["query"]
-	errorMsg := req.Params.Arguments["error"]
-
-	if query == "" {
-		return nil, fmt.Errorf("query argument is required")
-	}
-	if errorMsg == "" {
-		return nil, fmt.Errorf("error argument is required")
-	}
-
-	repair := buildFixQueryErrorRepair(query, errorMsg, ms.analyticsModeOn())
-	return mcp.NewGetPromptResult(
-		repair.Title,
-		[]mcp.PromptMessage{
-			mcp.NewPromptMessage(
-				mcp.RoleAssistant,
-				mcp.NewTextContent(repair.GuideMarkdown),
 			),
 		},
 	), nil

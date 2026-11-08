@@ -49,80 +49,6 @@ func (ms *mcpServer) registerSchemaTools() {
 	), ms.handleValidateWhereClause)
 }
 
-func (ms *mcpServer) handleListTables(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if err := ms.requireDB(); err != nil {
-		return err, nil
-	}
-	args := req.GetArguments()
-	database, _ := args["database"].(string)
-	opts := tableListOptionsFromArgs(args)
-
-	if ms.service.disc != nil {
-		result := ms.service.disc.TableIndexPage(ctx, database, opts)
-		return ms.toolResultJSON("list_tables", args, result)
-	}
-
-	var entries []TableIndexEntry
-	var tables []core.TableInfo
-	if database != "" {
-		tables = ms.service.gj.GetTablesForDatabase(database)
-	} else {
-		tables = ms.service.gj.GetTables()
-	}
-	for _, t := range tables {
-		entries = append(entries, TableIndexEntry{
-			Name:        t.Name,
-			Schema:      t.Schema,
-			Database:    t.Database,
-			Type:        t.Type,
-			Comment:     t.Comment,
-			ColumnCount: t.ColumnCount,
-		})
-	}
-
-	entries = filterTableIndex(entries, opts)
-	page, nextCursor, hasMore := paginateTableIndex(entries, opts)
-	result := ListTablesResult{
-		Database:   database,
-		Tables:     page,
-		Count:      len(page),
-		Total:      len(entries),
-		NextCursor: nextCursor,
-		HasMore:    hasMore,
-	}
-	return ms.toolResultJSON("list_tables", args, result)
-}
-
-func tableListOptionsFromArgs(args map[string]any) TableListOptions {
-	search, _ := args["search"].(string)
-	schemaName, _ := args["schema"].(string)
-	cursor, _ := args["cursor"].(string)
-	return TableListOptions{
-		Search: search,
-		Schema: schemaName,
-		Limit:  intArg(args["limit"]),
-		Cursor: cursor,
-	}
-}
-
-func intArg(v any) int {
-	switch t := v.(type) {
-	case int:
-		return t
-	case int64:
-		return int(t)
-	case float64:
-		return int(t)
-	case float32:
-		return int(t)
-	case json.Number:
-		n, _ := t.Int64()
-		return int(n)
-	default:
-		return 0
-	}
-}
-
 // AggregationInfo describes available aggregation functions for a table
 type AggregationInfo struct {
 	Available   []string `json:"available"`
@@ -141,93 +67,6 @@ type TableSchemaWithAggregations struct {
 type ExampleQuery struct {
 	Description string `json:"description"`
 	Query       string `json:"query"`
-}
-
-// handleDescribeTable returns detailed schema for a table including aggregations
-func (ms *mcpServer) handleDescribeTable(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if err := ms.requireDB(); err != nil {
-		return err, nil
-	}
-	args := req.GetArguments()
-	table, _ := args["table"].(string)
-	database, _ := args["database"].(string)
-	schemaName, _ := args["schema"].(string)
-
-	if table == "" {
-		return mcp.NewToolResultError("table name is required"), nil
-	}
-
-	var schema *core.TableSchema
-	var err error
-	if database != "" || schemaName != "" {
-		schema, err = ms.service.gj.GetTableSchemaForDatabaseSchema(database, schemaName, table)
-	} else {
-		schema, err = ms.service.gj.GetTableSchema(table)
-	}
-	if err != nil {
-		return mcp.NewToolResultError(enhanceError(err.Error(), "describe_table")), nil
-	}
-
-	// Generate available aggregations based on column types
-	aggregations := generateAggregations(schema)
-
-	// Generate example queries
-	examples := generateExampleQueries(schema)
-
-	result := TableSchemaWithAggregations{
-		TableSchema:    schema,
-		Aggregations:   aggregations,
-		ExampleQueries: examples,
-	}
-	return ms.toolResultJSON("describe_table", args, result)
-}
-
-func (ms *mcpServer) handleGetDiscoverySchema(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.GetArguments()
-	return ms.toolResultJSON("get_discovery_schema", args, discoverySchema())
-}
-
-func (ms *mcpServer) handleListNamespaces(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	// list_namespaces is intentionally NOT gated on SchemaReady — its
-	// whole purpose is to help when the schema cache is empty, by
-	// surfacing what databases/schemas exist so the caller can pick
-	// a target. It only needs a live DB connection (which DiscoveryManager
-	// reaches via gj.DBForDatabase).
-	if ms.service.disc == nil {
-		return mcp.NewToolResultError("Discovery not available yet."), nil
-	}
-	args := req.GetArguments()
-	database, _ := args["database"].(string)
-
-	rollup := ms.service.disc.Namespaces(ctx, database)
-	result := ListNamespacesResult{
-		Database:   database,
-		Namespaces: rollup,
-		Count:      len(rollup),
-	}
-	return ms.toolResultJSON("list_namespaces", args, result)
-}
-
-func (ms *mcpServer) handleGetTableSample(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if err := ms.requireDB(); err != nil {
-		return err, nil
-	}
-	if ms.service.disc == nil {
-		return mcp.NewToolResultError("Discovery not available yet."), nil
-	}
-	args := req.GetArguments()
-	table, _ := args["table"].(string)
-	database, _ := args["database"].(string)
-	schemaName, _ := args["schema"].(string)
-	if table == "" {
-		return mcp.NewToolResultError("table name is required"), nil
-	}
-
-	result, err := ms.service.disc.TableSample(ctx, database, schemaName, table)
-	if err != nil {
-		return mcp.NewToolResultError(enhanceError(err.Error(), "get_table_sample")), nil
-	}
-	return ms.toolResultJSON("get_table_sample", args, result)
 }
 
 // generateAggregations creates the list of available aggregation functions based on column types
@@ -982,17 +821,6 @@ func (ms *mcpServer) availableToolSet() map[string]bool {
 		available[name] = true
 	}
 	return available
-}
-
-func parseWhereClauseArg(value any) (map[string]any, error) {
-	whereData, _, err := parseWhereClauseInput(value)
-	if err != nil {
-		return nil, err
-	}
-	if whereData == nil {
-		return nil, fmt.Errorf("where clause must be a JSON object for this caller")
-	}
-	return whereData, nil
 }
 
 func parseWhereClauseInput(value any) (map[string]any, string, error) {

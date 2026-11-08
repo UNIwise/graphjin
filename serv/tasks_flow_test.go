@@ -18,7 +18,7 @@ func TestTaskProjectionGraphQLTraversal(t *testing.T) {
 	svc := newArtifactOverlayTestServiceWithOptions(t, nil, core.ArtifactsConfig{
 		Enabled: true, Source: "main", AutoInit: &autoInit, GlobalsPath: ".",
 	}, func(conf *Config) {
-		conf.Core.Tasks = core.TasksConfig{Enabled: true, MaxPerOwner: 20, MaxEntriesPerTask: 500, EntryRetentionHours: 168, SnapshotMaxBytes: 32768}
+		conf.Tasks = core.TasksConfig{Enabled: true, MaxPerOwner: 20, MaxEntriesPerTask: 500, EntryRetentionHours: 168, SnapshotMaxBytes: 32768}
 	})
 	ctx := contextWithUserRole(artifactUserCtx("projection_owner"), "user")
 	created, err := svc.gj.GraphQL(ctx, `mutation {

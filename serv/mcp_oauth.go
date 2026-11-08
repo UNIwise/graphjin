@@ -632,7 +632,7 @@ func fetchClientIDMetadataDocument(ctx context.Context, clientID string) (*mcpOA
 	if err != nil {
 		return nil, fmt.Errorf("fetch client metadata: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("client metadata returned HTTP %d", resp.StatusCode)
 	}

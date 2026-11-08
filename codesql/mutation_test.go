@@ -26,7 +26,7 @@ func Value() int {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer managed.Close()
+	defer func() { _ = managed.Close() }()
 
 	start := int64(strings.Index(src, "func Value"))
 	end := int64(strings.Index(src, "\n}\n") + len("\n}\n"))
@@ -97,7 +97,7 @@ func TestManagedMutationCreateApplyAndValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer managed.Close()
+	defer func() { _ = managed.Close() }()
 
 	out := previewEditsForTest(t, managed, []map[string]interface{}{{
 		"op":      "create",
@@ -156,7 +156,7 @@ func TestManagedMutationDeleteApplyAndValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer managed.Close()
+	defer func() { _ = managed.Close() }()
 
 	out := previewEditsForTest(t, managed, []map[string]interface{}{{
 		"op":            "delete",
@@ -211,7 +211,7 @@ func TestManagedMutationRenameApplyAndValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer managed.Close()
+	defer func() { _ = managed.Close() }()
 
 	out := previewEditsForTest(t, managed, []map[string]interface{}{{
 		"op":            "rename",
@@ -262,7 +262,7 @@ func TestManagedMutationLifecycleLockConflicts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer managed.Close()
+	defer func() { _ = managed.Close() }()
 
 	lockOut := executeManagedMutationForTest(t, managed, MutationRoot{
 		FieldName: "code_locks",
@@ -358,7 +358,7 @@ func TestManagedMutationMixedLifecyclePathConflicts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer managed.Close()
+	defer func() { _ = managed.Close() }()
 
 	out := previewEditsForTest(t, managed, []map[string]interface{}{
 		{"op": "create", "path": "dup.go", "content": "package main\n"},
@@ -395,7 +395,7 @@ func Value() int {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer managed.Close()
+	defer func() { _ = managed.Close() }()
 
 	start := int64(strings.Index(src, "return 1"))
 	end := start + int64(len("return 1"))

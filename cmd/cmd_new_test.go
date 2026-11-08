@@ -78,8 +78,8 @@ func TestCmdNewWritesAgenticAndSourcesTemplates(t *testing.T) {
 
 func assertGeneratedRuntimeDefaults(t *testing.T, mode string, conf *serv.Config) {
 	t.Helper()
-	if !conf.Agent.Enabled || !conf.MCP.IncludeToolsWithAgent || !conf.Core.Artifacts.Enabled || !conf.Core.Watches.Enabled || conf.Core.Watches.Runner != "all" {
-		t.Fatalf("generated %s config did not resolve complete runtime: agent=%+v mcp=%+v artifacts=%+v watches=%+v", mode, conf.Agent, conf.MCP, conf.Core.Artifacts, conf.Core.Watches)
+	if !conf.Agent.Enabled || !conf.MCP.IncludeToolsWithAgent || !conf.Artifacts.Enabled || !conf.Watches.Enabled || conf.Watches.Runner != "all" {
+		t.Fatalf("generated %s config did not resolve complete runtime: agent=%+v mcp=%+v artifacts=%+v watches=%+v", mode, conf.Agent, conf.MCP, conf.Artifacts, conf.Watches)
 	}
 }
 
@@ -136,17 +136,17 @@ func TestRenderedTemplatesReadWithInheritance(t *testing.T) {
 			t.Fatalf("validate %s: %v", name, err)
 		}
 		seen := map[string]bool{}
-		for _, source := range conf.Core.Sources {
+		for _, source := range conf.Sources {
 			if seen[source.Name] {
-				t.Fatalf("%s has duplicate source %q after inheritance: %+v", name, source.Name, conf.Core.Sources)
+				t.Fatalf("%s has duplicate source %q after inheritance: %+v", name, source.Name, conf.Sources)
 			}
 			seen[source.Name] = true
 		}
 		if name == "dev.yml" || name == "agentic.yml" {
 			assertGeneratedRuntimeDefaults(t, name, conf)
 		}
-		if name == "prod.yml" && (conf.Agent.Enabled || conf.MCP.IncludeToolsWithAgent || conf.Core.Artifacts.Enabled || conf.Core.Watches.Enabled) {
-			t.Fatalf("generated prod config changed isolation defaults: agent=%+v mcp=%+v artifacts=%+v watches=%+v", conf.Agent, conf.MCP, conf.Core.Artifacts, conf.Core.Watches)
+		if name == "prod.yml" && (conf.Agent.Enabled || conf.MCP.IncludeToolsWithAgent || conf.Artifacts.Enabled || conf.Watches.Enabled) {
+			t.Fatalf("generated prod config changed isolation defaults: agent=%+v mcp=%+v artifacts=%+v watches=%+v", conf.Agent, conf.MCP, conf.Artifacts, conf.Watches)
 		}
 	}
 }
@@ -174,7 +174,7 @@ func TestCmdNewUsesDatabaseURLInSourceTemplates(t *testing.T) {
 			t.Fatalf("resolve %s: %v", name, err)
 		}
 		var sourceFound bool
-		for _, source := range resolved.Core.Sources {
+		for _, source := range resolved.Sources {
 			if source.Name != "default" {
 				continue
 			}
@@ -206,7 +206,7 @@ func TestCmdNewUsesMySQLURLDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve agentic.yml: %v", err)
 	}
-	for _, source := range resolved.Core.Sources {
+	for _, source := range resolved.Sources {
 		if source.Name == "default" {
 			if source.Type != "mysql" || source.Host != "db.example" || source.Port != 3306 || source.DBName != "inventory" || source.User != "root" || source.Password != "" {
 				t.Fatalf("agentic.yml did not apply MySQL URL defaults: %+v", source)

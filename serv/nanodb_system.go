@@ -52,7 +52,7 @@ func (s *graphjinService) initSystemNanoDBBeforeCore() error {
 		return err
 	}
 	codeDB := ""
-	if s.conf.Core.MetadataAutoCodeRelationsEnabled() {
+	if s.conf.MetadataAutoCodeRelationsEnabled() {
 		codeDBs := s.selectedCodeSQLDatabasesFor(&s.conf.Core, s.managedDBs)
 		if len(codeDBs) == 1 {
 			codeDB = codeDBs[0]
@@ -1042,7 +1042,7 @@ func (s *graphjinService) markTaskChanged(reason string) {
 }
 
 func (s *graphjinService) refreshArtifactProjection() error {
-	if s == nil || s.systemNanoDB == nil || s.metadataDB == "" || s.conf == nil || !s.conf.Core.Artifacts.Enabled {
+	if s == nil || s.systemNanoDB == nil || s.metadataDB == "" || s.conf == nil || !s.conf.Artifacts.Enabled {
 		return nil
 	}
 	s.artifactProjectionRefreshes.Add(1)

@@ -1053,20 +1053,6 @@ func (d *MySQLDialect) RenderSetSessionVar(ctx Context, name, value string) bool
 	return true
 }
 
-// Helper to join path for MySQL
-func joinPathMySQL(ctx Context, prefix string, path []string, enableCamelcase bool) {
-	ctx.WriteString(prefix)
-	for i := range path {
-		ctx.WriteString(`->`)
-		ctx.WriteString(`'$.`)
-		if enableCamelcase {
-			ctx.WriteString(util.ToCamel(path[i]))
-		} else {
-			ctx.WriteString(path[i])
-		}
-		ctx.WriteString(`'`)
-	}
-}
 func (d *MySQLDialect) RenderTableName(ctx Context, sel *qcode.Select, schema, table string) {
 	if schema != "" {
 		ctx.Quote(schema)

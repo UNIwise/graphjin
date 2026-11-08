@@ -87,7 +87,9 @@ func (co *Compiler) compileMutation(
 
 	co.dialect.RenderMutationPostamble(&c, qc)
 	c.w.WriteString(` `)
-	co.CompileQuery(w, qc, c.md)
+	if err := co.CompileQuery(w, qc, c.md); err != nil {
+		return err
+	}
 	return c.err
 
 }
@@ -229,7 +231,7 @@ func (c *compilerContext) compileRedshiftDeleteMutation() {
 		}
 	}
 	c.dialect.RenderQueryPrefix(c, &qc)
-	if err := c.Compiler.CompileQuery(c.w, &qc, c.md); err != nil {
+	if err := c.CompileQuery(c.w, &qc, c.md); err != nil {
 		c.SetError(err)
 	}
 	c.w.WriteString(`; DROP TABLE IF EXISTS `)
@@ -421,7 +423,8 @@ func (c *compilerContext) compileLinearMutation() {
 						}
 						pm := c.qc.Mutates[m.ParentID]
 
-						if dialectName == "sqlite" {
+						switch dialectName {
+						case "sqlite":
 							c.colWithTable(m.Ti.Name, childCol)
 							c.w.WriteString(" = ")
 							c.w.WriteString("(SELECT ")
@@ -431,7 +434,7 @@ func (c *compilerContext) compileLinearMutation() {
 							c.w.WriteString(" WHERE ")
 							c.renderPKWhereVars(pm)
 							c.w.WriteString(")")
-						} else if dialectName == "snowflake" {
+						case "snowflake":
 							// Snowflake child mutation WHERE: look up the
 							// FK value from the parent via a scalar subquery
 							// against the captured parent ID. This avoids
@@ -455,7 +458,7 @@ func (c *compilerContext) compileLinearMutation() {
 								c.renderPKWhereVarsWithTable(pm, pm.Ti.Name)
 								c.w.WriteString(")")
 							}
-						} else {
+						default:
 							// MySQL/MariaDB/MSSQL/Oracle use captured variable with FK column name
 							// Variable format: @parentTable_parentID_fkColumn (or v_ for Oracle)
 							c.colWithTable(m.Ti.Name, childCol)
@@ -509,7 +512,9 @@ func (c *compilerContext) compileLinearMutation() {
 	if c.qc.Selects != nil {
 		c.dialect.ModifySelectsForMutation(c.qc)
 		c.dialect.RenderQueryPrefix(c, c.qc)
-		c.Compiler.CompileQuery(c.w, c.qc, c.md)
+		if err := c.CompileQuery(c.w, c.qc, c.md); err != nil {
+			c.SetError(err)
+		}
 	}
 
 	// Teardown (e.g. Drop Temp Table)

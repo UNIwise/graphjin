@@ -23,7 +23,7 @@ func (ms *mcpServer) callerAllowedActions(ctx context.Context) []string {
 	authenticated := mcpContextAuthenticated(ctx, role)
 	actions := make(map[string]bool)
 
-	if !conf.Core.IsSourcesUsed() {
+	if !conf.IsSourcesUsed() {
 		// Legacy mode has no bounded source access profile. Preserve its existing
 		// coarse write posture and leave concrete authorization to core.
 		actions[gjagent.CapabilityActionDataInsert] = true
@@ -31,7 +31,7 @@ func (ms *mcpServer) callerAllowedActions(ctx context.Context) []string {
 		actions[gjagent.CapabilityActionDataDelete] = true
 	} else {
 		admins := conf.Core.EffectiveIdentityConfig().AdminRoles
-		for _, source := range conf.Core.Sources {
+		for _, source := range conf.Sources {
 			kind := source.CanonicalKind()
 			switch kind {
 			case sourcecap.KindDatabase:
@@ -39,7 +39,7 @@ func (ms *mcpServer) callerAllowedActions(ctx context.Context) []string {
 				if !writeEnabled || source.ReadOnly {
 					continue
 				}
-				access := conf.Core.EffectiveSourceAccess(source)
+				access := conf.EffectiveSourceAccess(source)
 				if systemRootAccessAllowed(access.Write, role, admins, effectiveMode(conf), conf.DefaultBlock) {
 					actions[gjagent.CapabilityActionDataInsert] = true
 					actions[gjagent.CapabilityActionDataUpdate] = true
@@ -92,7 +92,7 @@ func (ms *mcpServer) addCallerAllowedAPIActions(ctx context.Context, conf *Confi
 		if !operation.Active {
 			continue
 		}
-		decision := conf.Core.AuthorizeOpenAPIOperation(ctx, &gjopenapi.OpDescriptor{
+		decision := conf.AuthorizeOpenAPIOperation(ctx, &gjopenapi.OpDescriptor{
 			SourceName: operation.SourceName, OperationID: operation.OperationID,
 			Method: operation.Method, AllowedRoles: operation.AllowedRoles,
 		}, role)

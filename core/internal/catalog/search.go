@@ -1251,7 +1251,7 @@ func tokenizeCatalogText(text string) []string {
 	text = splitCamelCase(text)
 	var tokens []string
 	for _, part := range strings.FieldsFunc(text, func(r rune) bool {
-		return !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '@')
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '@'
 	}) {
 		part = strings.ToLower(strings.TrimSpace(part))
 		if part == "" {

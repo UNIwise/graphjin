@@ -43,7 +43,7 @@ func (c *Conn) introspectInfo(ctx context.Context, q *QueryDSL) (driver.Rows, er
 	}
 	version := 0
 	if len(rs.Rows) > 0 {
-		fmt.Sscanf(asString(rs.Rows[0]["v"]), "%d", &version)
+		_, _ = fmt.Sscanf(asString(rs.Rows[0]["v"]), "%d", &version)
 	}
 	return NewColumnRows([]string{"version", "schema", "name"}, [][]any{{version, db, db}}), nil
 }

@@ -32,7 +32,7 @@ func (s *graphjinService) internalStoreRoot(table string) (string, string, bool)
 	if !ok {
 		return "", "", false
 	}
-	cfg := s.conf.Core.EffectiveArtifactsConfig()
+	cfg := s.conf.EffectiveArtifactsConfig()
 	if dbType == "postgres" || dbType == "" {
 		return table, cfg.Schema, true
 	}
@@ -65,7 +65,7 @@ func strconvQuote(s string) string {
 }
 
 func (s *graphjinService) injectInternalStoreRole() {
-	if s == nil || s.conf == nil || !s.conf.Core.Artifacts.Enabled {
+	if s == nil || s.conf == nil || !s.conf.Artifacts.Enabled {
 		return
 	}
 	coreConf := &s.conf.Core
@@ -76,7 +76,7 @@ func (s *graphjinService) injectInternalStoreRole() {
 	if _, resolvedType, _, ok := s.artifactDB(); ok {
 		dbType = resolvedType
 	}
-	cfg := s.conf.Core.EffectiveArtifactsConfig()
+	cfg := s.conf.EffectiveArtifactsConfig()
 	dbName := cfg.Source
 	if s.managedArtifactDB != "" {
 		dbName = s.managedArtifactDB
@@ -90,7 +90,7 @@ func (s *graphjinService) injectInternalStoreRole() {
 	// block — otherwise a public/authenticated source access mode would let
 	// callers read the raw rows and bypass owner scoping.
 	blockRoles := []string{"anon", "user"}
-	if s.conf.Core.IsSourcesUsed() {
+	if s.conf.IsSourcesUsed() {
 		blockRoles = sourceModeSystemRoleNames(s.conf)
 	}
 	for _, role := range coreConf.Roles {

@@ -16,7 +16,6 @@ type MongoDBDialect struct {
 	EnableCamelcase bool
 	pipelineDepth   int
 	inPipeline      bool
-	paramIndex      int
 }
 
 func (d *MongoDBDialect) Name() string {
@@ -1267,9 +1266,9 @@ func (d *MongoDBDialect) renderNestedInsertMutation(ctx Context, qc *qcode.QCode
 		// FK connect: owner.connect.id -> owner_id
 		if cm.Rel.Type == sdata.RelOneToOne || cm.Rel.Type == sdata.RelOneToMany {
 			// Extract the ID value from the Where clause
-			if cm.Where.Exp != nil && cm.Where.Exp.Op == qcode.OpEquals {
+			if cm.Where.Exp != nil && cm.Where.Op == qcode.OpEquals {
 				column := cm.Rel.Right.Col.Name
-				value := cm.Where.Exp.Right.Val
+				value := cm.Where.Right.Val
 				fkConnectValues = append(fkConnectValues, struct {
 					column string
 					value  string
@@ -1552,18 +1551,13 @@ func (d *MongoDBDialect) renderUpdateMutation(ctx Context, qc *qcode.QCode, m *q
 
 	// Render where clause for the filter
 	// Check both the mutation's WHERE and the root select's WHERE (for id: $id style filters)
-	hasFilter := false
 	rootSel := getMutationRootSelect(qc, m)
 	if m.ParentID == -1 && rootSel != nil && rootSel.Where.Exp != nil {
 		d.renderExpression(ctx, rootSel.Where.Exp)
-		hasFilter = true
 	}
 	if m.Where.Exp != nil {
-		if hasFilter {
-			// If we already have a filter, we need to wrap in $and
-			// But for simplicity, just add the mutation's WHERE with a comma
-			// This is a simplification - proper implementation would need $and wrapper
-		}
+		// When both filters are present they are rendered side by side without
+		// an $and wrapper (a known simplification).
 		d.renderExpression(ctx, m.Where.Exp)
 	}
 
@@ -1808,10 +1802,9 @@ func (d *MongoDBDialect) renderNestedUpdateItem(ctx Context, qc *qcode.QCode, m 
 			d.renderExpression(ctx, rootSel.Where.Exp)
 		} else if m.Where.Exp != nil {
 			d.renderExpression(ctx, m.Where.Exp)
-		} else if m.ParentID != -1 {
-			// For child updates, we'll filter by FK at execution time
-			// Just render empty for now
 		}
+		// Child updates (ParentID != -1) render no filter here; they are
+		// filtered by FK at execution time.
 	}
 	ctx.WriteString(`}`)
 
@@ -2198,14 +2191,9 @@ func (d *MongoDBDialect) CompileFullQuery(ctx Context, qc *qcode.QCode) bool {
 }
 
 // effectiveSkipRender returns the effective skip render status for a selection.
-// It checks both sel.SkipRender (for auth/block status) and sel.Field.SkipRender
-// (for @skip/@include/@add/@remove directives on selectors).
+// qcode.Select embeds qcode.Field, so sel.SkipRender is the single status that
+// covers both auth/block checks and @skip/@include/@add/@remove directives.
 func (d *MongoDBDialect) effectiveSkipRender(sel *qcode.Select) qcode.SkipType {
-	// First check selector-level directive status (from @skip/@include/@add/@remove on the selector)
-	if sel.Field.SkipRender != qcode.SkipTypeNone {
-		return sel.Field.SkipRender
-	}
-	// Then check selection-level status (from auth/block checks)
 	return sel.SkipRender
 }
 
@@ -2330,22 +2318,20 @@ func (d *MongoDBDialect) renderAggregateQuery(ctx Context, qc *qcode.QCode, sel 
 			ctx.WriteString(`,`)
 		}
 		d.renderProjectStageWithChildren(ctx, sel, qc)
-		pipelineDepth++
 	} else {
 		// No fields requested (all dropped) - return empty objects
 		if pipelineDepth > 0 {
 			ctx.WriteString(`,`)
 		}
 		ctx.WriteString(`{"$replaceRoot":{"newRoot":{}}}`)
-		pipelineDepth++
 	}
 
 	// Close pipeline array
 	ctx.WriteString(`]`)
 
 	// Add condition for variable-based directives (@include(ifVar:$var), @skip(ifVar:$var))
-	if sel.Field.FieldFilter.Exp != nil {
-		d.renderQueryCondition(ctx, sel.Field.FieldFilter.Exp)
+	if sel.FieldFilter.Exp != nil {
+		d.renderQueryCondition(ctx, sel.FieldFilter.Exp)
 	}
 
 	// Add cursor info for cursor-based pagination
@@ -2452,11 +2438,6 @@ func (d *MongoDBDialect) renderQueryCondition(ctx Context, exp *qcode.Exp) {
 		ctx.AddParam(Param{Name: exp.Right.Val, Type: "boolean"})
 		ctx.WriteString(`","op":"ne"}`)
 	}
-}
-
-// renderLookupStage generates a $lookup stage for joining a related collection
-func (d *MongoDBDialect) renderLookupStage(ctx Context, parent, child *qcode.Select) {
-	d.renderLookupStageWithQC(ctx, parent, child, nil)
 }
 
 // renderLookupStageWithQC is like renderLookupStage but with access to qc for grandchildren
@@ -3228,8 +3209,7 @@ func (d *MongoDBDialect) renderProjectStageWithChildren(ctx Context, sel *qcode.
 	for _, childID := range sel.Children {
 		child := &qc.Selects[childID]
 		// Count normally rendered children
-		if child.SkipRender == qcode.SkipTypeNone &&
-			child.Field.SkipRender == qcode.SkipTypeNone {
+		if child.SkipRender == qcode.SkipTypeNone {
 			visibleChildCount++
 		}
 		// Also count children that will be rendered as null
@@ -3697,17 +3677,6 @@ func isGeoDistanceOp(op qcode.ExpOp) bool {
 	return false
 }
 
-// isGeoOp checks if an operation is any geo/spatial operation
-func isGeoOp(op qcode.ExpOp) bool {
-	switch op {
-	case qcode.OpGeoDistance, qcode.OpGeoNear, qcode.OpGeoWithin, qcode.OpGeoContains,
-		qcode.OpGeoIntersects, qcode.OpGeoCoveredBy, qcode.OpGeoCovers,
-		qcode.OpGeoTouches, qcode.OpGeoOverlaps:
-		return true
-	}
-	return false
-}
-
 // hasTableRef checks if an expression references a specific table (recursively)
 func hasTableRef(exp *qcode.Exp, tableName string) bool {
 	if exp == nil {
@@ -3853,7 +3822,9 @@ func (d *MongoDBDialect) renderExpression(ctx Context, exp *qcode.Exp) {
 		if colName == "" {
 			colName = exp.Left.ColName
 		}
-		d.RenderGeoOp(ctx, "", colName, exp)
+		if err := d.RenderGeoOp(ctx, "", colName, exp); err != nil {
+			ctx.SetError(err)
+		}
 	default:
 		if exp.Right.ValType == qcode.ValRef {
 			d.renderColRefExpression(ctx, exp)
@@ -4186,25 +4157,6 @@ func (d *MongoDBDialect) renderSortStage(ctx Context, sel *qcode.Select) {
 		ctx.WriteString(`]`)
 	}
 	ctx.WriteString(`]}`)
-}
-
-// renderProjectStage renders a $project pipeline stage
-func (d *MongoDBDialect) renderProjectStage(ctx Context, sel *qcode.Select) {
-	ctx.WriteString(`{"$project":{`)
-	for i, f := range sel.Fields {
-		if i > 0 {
-			ctx.WriteString(`,`)
-		}
-		colName := f.Col.Name
-		// Translate "id" to "_id"
-		if colName == "id" {
-			colName = "_id"
-		}
-		ctx.WriteString(`"`)
-		ctx.WriteString(colName)
-		ctx.WriteString(`":1`)
-	}
-	ctx.WriteString(`}}`)
 }
 
 // renderEmbeddedJSONStage handles JSON virtual tables (RelEmbedded).

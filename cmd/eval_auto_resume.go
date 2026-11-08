@@ -104,11 +104,11 @@ func runAutoResumeBench(
 		}
 		reason := gjeval.FriendlyStopReason(code, cfg.Provider)
 		if !gjeval.TransientEnvironmentCode(code) {
-			fmt.Fprintf(cfg.Stderr, "auto-resume stopping: %s; this needs attention rather than another attempt\n", reason)
+			_, _ = fmt.Fprintf(cfg.Stderr, "auto-resume stopping: %s; this needs attention rather than another attempt\n", reason)
 			return report, nil
 		}
 		if number >= maxAttempts {
-			fmt.Fprintf(cfg.Stderr, "auto-resume giving up after %d attempt(s): %s\n", number, reason)
+			_, _ = fmt.Fprintf(cfg.Stderr, "auto-resume giving up after %d attempt(s): %s\n", number, reason)
 			return report, nil
 		}
 
@@ -119,7 +119,7 @@ func runAutoResumeBench(
 		}
 		previousProgress = progress
 
-		fmt.Fprintf(cfg.Stderr, "auto-resume attempt %d/%d: %s; resuming run %s in %s (%d of %d attempts complete)\n",
+		_, _ = fmt.Fprintf(cfg.Stderr, "auto-resume attempt %d/%d: %s; resuming run %s in %s (%d of %d attempts complete)\n",
 			number+1, maxAttempts, reason, report.RunID, delay,
 			progress, report.Progress.PlannedInitialSlots)
 		if err := cfg.sleep(ctx, delay); err != nil {

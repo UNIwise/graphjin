@@ -167,18 +167,3 @@ func questionWord(n int) string {
 	}
 	return "questions"
 }
-
-func questionWasWere(n int) string {
-	if n == 1 {
-		return "question was"
-	}
-	return "questions were"
-}
-
-func sentenceCount(n int) string {
-	words := []string{"Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"}
-	if n >= 0 && n < len(words) {
-		return words[n]
-	}
-	return fmt.Sprint(n)
-}

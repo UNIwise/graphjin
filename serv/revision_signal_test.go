@@ -60,7 +60,7 @@ func TestRevisionSignalIsPrivate(t *testing.T) {
 
 func TestRevisionSignalReadsPastGraphQLDefaultLimit(t *testing.T) {
 	db, svc := newSQLiteWatchService(t, 20)
-	svc.conf.Core.DefaultLimit = 2
+	svc.conf.DefaultLimit = 2
 	if err := svc.initArtifactsBeforeCore(); err != nil {
 		t.Fatalf("initialize revision signal store: %v", err)
 	}

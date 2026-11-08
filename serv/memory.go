@@ -34,7 +34,7 @@ const (
 var errMemoryNotFound = errors.New("memory_not_found")
 
 func (s *graphjinService) memoryEnabled() bool {
-	return s != nil && s.conf != nil && s.conf.Core.Artifacts.Enabled && s.conf.Memory.Enabled && s.conf.Agent.Lead.Enabled
+	return s != nil && s.conf != nil && s.conf.Artifacts.Enabled && s.conf.Memory.Enabled && s.conf.Agent.Lead.Enabled
 }
 
 func (h artifactControlPlane) upsertMemory(ctx context.Context, root core.ManagedMutationRoot, existing map[string]any) (map[string]any, error) {

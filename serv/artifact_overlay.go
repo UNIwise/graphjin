@@ -467,9 +467,9 @@ func (s *graphjinService) catalogBuildOptionsForContext(ctx context.Context) cor
 
 func (s *graphjinService) catalogSnapshotForContext(ctx context.Context) (*core.CatalogSnapshot, error) {
 	ctx = s.applyIdentityContext(ctx)
-	legacyOpenAPI := s != nil && s.conf != nil && !s.conf.Core.IsSourcesUsed() &&
-		(len(s.conf.Core.OpenAPI) != 0 || strings.TrimSpace(s.conf.Core.OpenAPISpecsDir) != "")
-	if !s.artifactStoreForUser(ctx) && !legacyOpenAPI && (s.gj == nil || s.conf == nil || !s.conf.Core.IsSourcesUsed()) {
+	legacyOpenAPI := s != nil && s.conf != nil && !s.conf.IsSourcesUsed() &&
+		(len(s.conf.OpenAPI) != 0 || strings.TrimSpace(s.conf.OpenAPISpecsDir) != "")
+	if !s.artifactStoreForUser(ctx) && !legacyOpenAPI && (s.gj == nil || s.conf == nil || !s.conf.IsSourcesUsed()) {
 		return s.catalogSnapshot()
 	}
 	var md *core.MetadataSnapshot

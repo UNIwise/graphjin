@@ -31,14 +31,14 @@ func newArtifactControlPlane(s *graphjinService) artifactControlPlane {
 }
 
 func (h artifactControlPlane) ManagedQueryTables() []core.ManagedTable {
-	if h.service == nil || h.service.conf == nil || !h.service.conf.Core.Artifacts.Enabled {
+	if h.service == nil || h.service.conf == nil || !h.service.conf.Artifacts.Enabled {
 		return nil
 	}
 	return []core.ManagedTable{managedTable(artifactsRootTable, artifactColumns())}
 }
 
 func (h artifactControlPlane) ManagedMutationTables() []string {
-	if h.service == nil || h.service.conf == nil || !h.service.conf.Core.Artifacts.Enabled {
+	if h.service == nil || h.service.conf == nil || !h.service.conf.Artifacts.Enabled {
 		return nil
 	}
 	return []string{artifactsRootTable}
@@ -170,7 +170,7 @@ func (h artifactControlPlane) dbArtifactRows(ctx context.Context) ([]map[string]
 		return nil, nil
 	}
 	admin := s.identityRoleIsAdmin(ctx)
-	where := `where: { owner_id: { eq: $owner_id } }`
+	var where string
 	vars := map[string]any{"owner_id": userID}
 	if admin {
 		where = ""
@@ -239,7 +239,7 @@ func (h artifactControlPlane) globalArtifactRows() ([]map[string]any, error) {
 	if s == nil || s.conf == nil {
 		return nil, nil
 	}
-	cfg := s.conf.Core.EffectiveArtifactsConfig()
+	cfg := s.conf.EffectiveArtifactsConfig()
 	root := cfg.GlobalsPath
 	if root == "" {
 		return nil, nil
@@ -345,10 +345,10 @@ func artifactGlobalFSSearchDirs(root string) []string {
 func artifactFSJoin(base, elem string) string {
 	base = filepath.ToSlash(strings.TrimSpace(base))
 	elem = filepath.ToSlash(strings.TrimSpace(elem))
-	switch {
-	case base == "" || base == ".":
+	switch base {
+	case "", ".":
 		return elem
-	case base == "/":
+	case "/":
 		return "/" + strings.TrimPrefix(elem, "/")
 	default:
 		return strings.TrimSuffix(base, "/") + "/" + strings.TrimPrefix(elem, "/")
@@ -423,9 +423,6 @@ func (h artifactControlPlane) upsertArtifact(ctx context.Context, root core.Mana
 			Details:    map[string]any{"root": artifactsRootTable},
 		})
 		return nil, fmt.Errorf("global gj_artifacts are read-only")
-	}
-	if visibility != "user" && visibility != "account" {
-		visibility = "user"
 	}
 	name := stringInput(root.Input, "name", "")
 	if name == "" {
@@ -569,7 +566,7 @@ func (s *graphjinService) internalArtifactStoreRow(ctx context.Context, id strin
 // place of live discovery in demo mode — includes the store tables that
 // gj_artifacts/gj_watch role rules and internal-store queries compile against.
 func EnsureArtifactStore(conf *Config, dbs map[string]*sql.DB) error {
-	if conf == nil || !conf.Core.Artifacts.Enabled {
+	if conf == nil || !conf.Artifacts.Enabled {
 		return nil
 	}
 	// The managed store is created by graphjinService after application
@@ -583,7 +580,7 @@ func EnsureArtifactStore(conf *Config, dbs map[string]*sql.DB) error {
 }
 
 func (s *graphjinService) initArtifactsBeforeCore() error {
-	if s == nil || s.conf == nil || !s.conf.Core.Artifacts.Enabled || !s.conf.Core.Artifacts.AutoInitEnabled() {
+	if s == nil || s.conf == nil || !s.conf.Artifacts.Enabled || !s.conf.Artifacts.AutoInitEnabled() {
 		return nil
 	}
 	return s.ensureStoreTables()
@@ -593,7 +590,7 @@ func (s *graphjinService) initArtifactsBeforeCore() error {
 // regardless of auto_init. Serve startup reaches it through
 // initArtifactsBeforeCore; `graphjin db store init` calls it directly.
 func (s *graphjinService) ensureStoreTables() error {
-	if s == nil || s.conf == nil || !s.conf.Core.Artifacts.Enabled {
+	if s == nil || s.conf == nil || !s.conf.Artifacts.Enabled {
 		return nil
 	}
 	db, dbType, _, ok := s.artifactDB()
@@ -649,10 +646,10 @@ func (s *graphjinService) ensureStoreTables() error {
 }
 
 func (s *graphjinService) artifactDB() (*sql.DB, string, string, bool) {
-	if s == nil || s.conf == nil || !s.conf.Core.Artifacts.Enabled {
+	if s == nil || s.conf == nil || !s.conf.Artifacts.Enabled {
 		return nil, "", "", false
 	}
-	cfg := s.conf.Core.EffectiveArtifactsConfig()
+	cfg := s.conf.EffectiveArtifactsConfig()
 	source := cfg.Source
 	if s.conf.managedArtifactStore && s.managedArtifactDB != "" {
 		source = s.managedArtifactDB
@@ -901,7 +898,7 @@ func sqliteColumnExists(ctx context.Context, db *sql.DB, table, column string) (
 	if err != nil {
 		return false, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var cid int
 		var name, typ string
@@ -949,7 +946,7 @@ func (s *graphjinService) checkArtifactKindWritable(kind string) error {
 	if s == nil || s.conf == nil {
 		return nil
 	}
-	cfg := s.conf.Core.EffectiveArtifactsConfig()
+	cfg := s.conf.EffectiveArtifactsConfig()
 	for _, locked := range cfg.Locked {
 		if normalizeArtifactKind(locked) == kind {
 			return artifactPolicyError{
@@ -1187,17 +1184,6 @@ func stringWhere(where map[string]interface{}, key string) string {
 		return ""
 	}
 	return fmt.Sprint(v)
-}
-
-func jsonValue(s string, _ string) any {
-	if strings.TrimSpace(s) == "" {
-		return nil
-	}
-	var out any
-	if err := json.Unmarshal([]byte(s), &out); err != nil {
-		return s
-	}
-	return out
 }
 
 func artifactProjectionRow(row map[string]any, rawIDs bool) map[string]any {

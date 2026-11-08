@@ -62,7 +62,7 @@ func TestLive_NestedRead(t *testing.T) {
 	setupLiveSchema(t, s)
 
 	db := sql.OpenDB(NewConnector(s, "gjtest"))
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	dsl := `{"operation":"query","root":{
 		"keyspace":"gjtest","table":"users","columns":["id","name"],"partition_keys":["id"],
@@ -98,7 +98,7 @@ func TestLive_InsertReadAfterWrite(t *testing.T) {
 	setupLiveSchema(t, s)
 
 	db := sql.OpenDB(NewConnector(s, "gjtest"))
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	dsl := `{"operation":"insert","mutation":{
 		"type":"insert","keyspace":"gjtest","table":"users","partition_keys":["id"],

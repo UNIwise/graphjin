@@ -211,7 +211,7 @@ func (s *graphjinService) appendTaskTrailEntry(ctx context.Context, req gjagent.
 	if runErr != nil {
 		_, runErr = agentPublicFailure(conf, runErr)
 	}
-	if s.conf != nil && s.conf.Core.Artifacts.Source != "" && s.conf.artifactSourceReadOnly() {
+	if s.conf != nil && s.conf.Artifacts.Source != "" && s.conf.artifactSourceReadOnly() {
 		return
 	}
 	detail := map[string]any{

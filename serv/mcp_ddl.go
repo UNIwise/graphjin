@@ -12,53 +12,6 @@ import (
 
 // registerDDLTools is retained as an inert compatibility hook.
 func (ms *mcpServer) registerDDLTools() {
-	return
-
-	if !ms.service.conf.MCP.AllowSchemaUpdates {
-		return
-	}
-
-	// preview_schema_changes - Preview SQL that would be applied
-	ms.srv.AddTool(mcp.NewTool(
-		"preview_schema_changes",
-		mcp.WithDescription("Preview SQL changes needed to create or modify database tables. "+
-			"Takes a GraphJin DDL schema definition and returns the SQL that would be executed, without applying it. "+
-			"Use this to verify changes before calling apply_schema_changes. "+
-			"Example schema: type products { id: BigInt! @id\\n name: Text!\\n price: Numeric }"),
-		mcp.WithString("schema",
-			mcp.Required(),
-			mcp.Description("GraphJin DDL schema definition. Example:\n"+
-				"type products {\n  id: BigInt! @id\n  name: Text!\n  price: Numeric\n}"),
-		),
-		mcp.WithBoolean("destructive",
-			mcp.Description("Include DROP TABLE/COLUMN operations. Default: false"),
-		),
-		mcp.WithString("database",
-			mcp.Required(),
-			mcp.Description("Database name to target (as configured in the databases map)."),
-		),
-	), ms.handlePreviewSchemaChanges)
-
-	// apply_schema_changes - Apply schema changes to the database
-	ms.srv.AddTool(mcp.NewTool(
-		"apply_schema_changes",
-		mcp.WithDescription("Apply database schema changes using GraphJin DDL format. "+
-			"Creates or modifies tables by executing the necessary SQL. "+
-			"IMPORTANT: Call preview_schema_changes first to review the SQL before applying. "+
-			"After applying, the schema is automatically reloaded so new tables are immediately queryable."),
-		mcp.WithString("schema",
-			mcp.Required(),
-			mcp.Description("GraphJin DDL schema definition. Example:\n"+
-				"type products {\n  id: BigInt! @id\n  name: Text!\n  price: Numeric\n}"),
-		),
-		mcp.WithBoolean("destructive",
-			mcp.Description("Allow DROP TABLE/COLUMN operations. Default: false"),
-		),
-		mcp.WithString("database",
-			mcp.Required(),
-			mcp.Description("Database name to target (as configured in the databases map)."),
-		),
-	), ms.handleApplySchemaChanges)
 }
 
 // DDLOperationInfo describes a single schema operation for JSON response
@@ -118,7 +71,7 @@ func (ms *mcpServer) prepareSchema(schema, database string) []byte {
 	// Build header from database config
 	var dbType, dbSchema string
 	if database != "" {
-		if dbConf, ok := ms.service.conf.Core.Databases[database]; ok {
+		if dbConf, ok := ms.service.conf.Databases[database]; ok {
 			dbType = dbConf.Type
 			dbSchema = dbConf.Schema
 		}
@@ -158,7 +111,7 @@ func (ms *mcpServer) computeSchemaOps(schema string, destructive bool, database 
 
 	dbType := ms.service.conf.DB.Type
 	if database != "" {
-		if dbConf, ok := ms.service.conf.Core.Databases[database]; ok {
+		if dbConf, ok := ms.service.conf.Databases[database]; ok {
 			dbType = dbConf.Type
 		}
 	}

@@ -149,10 +149,10 @@ func (s *graphjinService) workflowBasePath() string {
 	if s == nil || s.conf == nil {
 		return workflowsPath
 	}
-	if strings.TrimSpace(s.conf.Core.Workflows.Path) == "" {
+	if strings.TrimSpace(s.conf.Workflows.Path) == "" {
 		return workflowsPath
 	}
-	path := filepath.Clean(strings.TrimSpace(s.conf.Core.Workflows.Path))
+	path := filepath.Clean(strings.TrimSpace(s.conf.Workflows.Path))
 	if path == "." {
 		return workflowsPath
 	}
@@ -255,11 +255,13 @@ func (ms *mcpServer) runWorkflowScript(ctx context.Context, workflowName, script
 	}
 
 	console := vm.NewObject()
-	console.Set("log", func(args ...any) {
+	if err := console.Set("log", func(args ...any) {
 		if ms.service.log != nil {
 			ms.service.log.Debugw("workflow console.log", "workflow", workflowName, "args", args)
 		}
-	}) //nolint:errcheck
+	}); err != nil {
+		return nil, err
+	}
 	if err := vm.Set("console", console); err != nil {
 		return nil, err
 	}

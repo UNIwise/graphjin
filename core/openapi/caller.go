@@ -264,7 +264,7 @@ func (c *Caller) doOnce(ctx context.Context, p CallParams) (CallResult, error) {
 	if err != nil {
 		return result, &upstreamTransportError{method: c.op.Method, operationID: c.op.OperationID, err: err}
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	responseLimit := c.op.MaxResponseBytes
 	if responseLimit <= 0 {

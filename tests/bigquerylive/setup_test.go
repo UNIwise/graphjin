@@ -1,6 +1,7 @@
 package bigquerylive
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -55,7 +56,7 @@ func TestTableStorageResponseUsesFixtureRows(t *testing.T) {
 		}),
 	}
 
-	res, err := st.tableStorageRows(nil, "dataset_a")
+	res, err := st.tableStorageRows(context.Background(), "dataset_a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +64,7 @@ func TestTableStorageResponseUsesFixtureRows(t *testing.T) {
 		t.Fatalf("rows = %d, want 2", got)
 	}
 
-	one, err := st.tableStorageRow(nil, "dataset_a", "users")
+	one, err := st.tableStorageRow(context.Background(), "dataset_a", "users")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +80,7 @@ func TestTableStorageResponseUsesFixtureRows(t *testing.T) {
 		t.Fatalf("namespace rows = %d, want 1", got)
 	}
 
-	missing, err := st.tableStorageRow(nil, "dataset_a", "missing")
+	missing, err := st.tableStorageRow(context.Background(), "dataset_a", "missing")
 	if err != nil {
 		t.Fatal(err)
 	}

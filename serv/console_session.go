@@ -240,7 +240,7 @@ func (s *graphjinService) mintDemoSession() (string, time.Time, error) {
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("demo sign-in: %w", err)
 	}
-	id := s.conf.Core.EffectiveIdentityConfig()
+	id := s.conf.EffectiveIdentityConfig()
 	exp := time.Now().Add(consoleSessionTTL)
 	claims := jwt.MapClaims{"sub": d.UserID, "exp": exp.Unix()}
 	if id.UserIDClaim != "" {

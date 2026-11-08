@@ -22,6 +22,7 @@ import (
 	hostedsnowflake "github.com/dosco/graphjin/hostedemu/snowflake"
 	"github.com/dosco/graphjin/mongodriver"
 	"github.com/dosco/graphjin/serv/v3"
+	"github.com/moby/moby/api/types/container"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/mongodb"
 	"github.com/testcontainers/testcontainers-go/modules/mysql"
@@ -61,7 +62,7 @@ func (s demoStatus) Emit(source, status, msg string) {
 		source = "demo"
 	}
 	msg = cleanDemoStatusMessage(msg)
-	fmt.Fprintf(s.out, "demo %-18s %-9s %s\n", source, status, msg)
+	_, _ = fmt.Fprintf(s.out, "demo %-18s %-9s %s\n", source, status, msg)
 }
 
 func cleanDemoStatusMessage(msg string) string {
@@ -114,7 +115,7 @@ type demoManifestItem struct {
 // StartDemo starts demo backing services, syncs schema, and seeds first-run data.
 func StartDemo(ctx context.Context, dbFlags []string, statusOut io.Writer) (*DemoRuntime, error) {
 	status := demoStatus{out: statusOut}
-	if err := conf.Core.NormalizeSources(); err != nil {
+	if err := conf.NormalizeSources(); err != nil {
 		return nil, err
 	}
 
@@ -193,7 +194,7 @@ func StartDemo(ctx context.Context, dbFlags []string, statusOut io.Writer) (*Dem
 	// generated: in demo mode core loads schema from that cache instead of
 	// live discovery, and the gj_artifacts/gj_watch roles compile against the
 	// store tables.
-	if conf.Core.Artifacts.Enabled {
+	if conf.Artifacts.Enabled {
 		status.Emit("artifacts", "creating", "ensuring artifact store tables")
 		if err := serv.EnsureArtifactStore(conf, runtime.Databases); err != nil {
 			return nil, fmt.Errorf("failed to initialize artifact store: %w", err)
@@ -435,7 +436,7 @@ func (s *demoState) writeManifest(dbs map[string]*sql.DB) error {
 }
 
 func verifyDemoWorkflows(status demoStatus) error {
-	workflowPath := strings.TrimSpace(conf.Core.Workflows.Path)
+	workflowPath := strings.TrimSpace(conf.Workflows.Path)
 	if workflowPath == "" {
 		workflowPath = "workflows"
 	}
@@ -593,11 +594,11 @@ func startDemoContainer(ctx context.Context, name string, dbConf core.DatabaseCo
 	}
 }
 
-// withVolumeMounts creates a customizer that adds volume mounts to the container
-func withVolumeMounts(mounts testcontainers.ContainerMounts) testcontainers.CustomizeRequestOption {
-	return func(req *testcontainers.GenericContainerRequest) error {
-		req.Mounts = append(req.Mounts, mounts...)
-		return nil
+// bindHostConfig binds a host directory into the container at target. The demo
+// containers keep their database files there so a restart finds the same data.
+func bindHostConfig(hostPath, target string) func(*container.HostConfig) {
+	return func(hc *container.HostConfig) {
+		hc.Binds = append(hc.Binds, hostPath+":"+target)
 	}
 }
 
@@ -613,9 +614,7 @@ func startPostgresDemo(ctx context.Context, name, dataDir string, status demoSta
 		postgres.WithUsername("graphjin"),
 		postgres.WithPassword("graphjin"),
 		postgres.WithDatabase("graphjin_demo"),
-		withVolumeMounts(testcontainers.ContainerMounts{
-			testcontainers.BindMount(dataDir, testcontainers.ContainerMountTarget("/var/lib/postgresql/data")),
-		}),
+		testcontainers.WithHostConfigModifier(bindHostConfig(dataDir, "/var/lib/postgresql/data")),
 	}
 
 	container, err := postgres.Run(ctx, "postgres:15", opts...)
@@ -660,7 +659,7 @@ func startPostgresDemo(ctx context.Context, name, dataDir string, status demoSta
 
 	return terminateFn(container), &DemoConnInfo{
 		Host:     host,
-		Port:     uint16(port.Int()),
+		Port:     port.Num(),
 		User:     "graphjin",
 		Password: "graphjin",
 		DBName:   "graphjin_demo",
@@ -676,9 +675,7 @@ func startMySQLDemo(ctx context.Context, name, dataDir string, status demoStatus
 		mysql.WithUsername("graphjin"),
 		mysql.WithPassword("graphjin"),
 		mysql.WithDatabase("graphjin_demo"),
-		withVolumeMounts(testcontainers.ContainerMounts{
-			testcontainers.BindMount(dataDir, testcontainers.ContainerMountTarget("/var/lib/mysql")),
-		}),
+		testcontainers.WithHostConfigModifier(bindHostConfig(dataDir, "/var/lib/mysql")),
 	}
 
 	container, err := mysql.Run(ctx, "mysql:8.0", opts...)
@@ -717,7 +714,7 @@ func startMySQLDemo(ctx context.Context, name, dataDir string, status demoStatus
 
 	return terminateFn(container), &DemoConnInfo{
 		Host:     host,
-		Port:     uint16(port.Int()),
+		Port:     port.Num(),
 		User:     "graphjin",
 		Password: "graphjin",
 		DBName:   "graphjin_demo",
@@ -741,10 +738,8 @@ func startMariaDBDemo(ctx context.Context, name, dataDir string, status demoStat
 				"MYSQL_USER":          "graphjin",
 				"MYSQL_PASSWORD":      "graphjin",
 			},
-			WaitingFor: wait.ForLog("ready for connections").WithStartupTimeout(120 * time.Second),
-			Mounts: testcontainers.ContainerMounts{
-				testcontainers.BindMount(dataDir, testcontainers.ContainerMountTarget("/var/lib/mysql")),
-			},
+			WaitingFor:         wait.ForLog("ready for connections").WithStartupTimeout(120 * time.Second),
+			HostConfigModifier: bindHostConfig(dataDir, "/var/lib/mysql"),
 		},
 		Started: true,
 	}
@@ -788,7 +783,7 @@ func startMariaDBDemo(ctx context.Context, name, dataDir string, status demoStat
 
 	return terminateFn(container), &DemoConnInfo{
 		Host:     host,
-		Port:     uint16(port.Int()),
+		Port:     port.Num(),
 		User:     "graphjin",
 		Password: "graphjin",
 		DBName:   "graphjin_demo",
@@ -888,10 +883,8 @@ func startOracleDemo(ctx context.Context, name, dataDir string, status demoStatu
 				"APP_USER":          "graphjin",
 				"APP_USER_PASSWORD": "graphjin_password",
 			},
-			WaitingFor: wait.ForLog("DATABASE IS READY TO USE!").WithStartupTimeout(300 * time.Second),
-			Mounts: testcontainers.ContainerMounts{
-				testcontainers.BindMount(dataDir, testcontainers.ContainerMountTarget("/opt/oracle/oradata")),
-			},
+			WaitingFor:         wait.ForLog("DATABASE IS READY TO USE!").WithStartupTimeout(300 * time.Second),
+			HostConfigModifier: bindHostConfig(dataDir, "/opt/oracle/oradata"),
 		},
 		Started: true,
 	}
@@ -922,7 +915,7 @@ func startOracleDemo(ctx context.Context, name, dataDir string, status demoStatu
 
 	return terminateFn(container), &DemoConnInfo{
 		Host:     host,
-		Port:     uint16(port.Int()),
+		Port:     port.Num(),
 		User:     "graphjin",
 		Password: "graphjin_password",
 		DBName:   "FREEPDB1",
@@ -942,10 +935,8 @@ func startMSSQLDemo(ctx context.Context, name, dataDir string, status demoStatus
 				"ACCEPT_EULA":       "Y",
 				"MSSQL_SA_PASSWORD": "GraphJin!Passw0rd",
 			},
-			WaitingFor: wait.ForLog("SQL Server is now ready for client connections").WithStartupTimeout(120 * time.Second),
-			Mounts: testcontainers.ContainerMounts{
-				testcontainers.BindMount(dataDir, testcontainers.ContainerMountTarget("/var/opt/mssql")),
-			},
+			WaitingFor:         wait.ForLog("SQL Server is now ready for client connections").WithStartupTimeout(120 * time.Second),
+			HostConfigModifier: bindHostConfig(dataDir, "/var/opt/mssql"),
 		},
 		Started: true,
 	}
@@ -1005,7 +996,7 @@ func startMSSQLDemo(ctx context.Context, name, dataDir string, status demoStatus
 
 	return terminateFn(container), &DemoConnInfo{
 		Host:     host,
-		Port:     uint16(port.Int()),
+		Port:     port.Num(),
 		User:     "sa",
 		Password: "GraphJin!Passw0rd",
 		DBName:   "graphjin_demo",
@@ -1018,9 +1009,7 @@ func startMSSQLDemo(ctx context.Context, name, dataDir string, status demoStatus
 func startMongoDBDemo(ctx context.Context, name, dataDir string, status demoStatus) (func(context.Context) error, *DemoConnInfo, error) {
 	status.Emit(name, "starting", "starting MongoDB container")
 	opts := []testcontainers.ContainerCustomizer{
-		withVolumeMounts(testcontainers.ContainerMounts{
-			testcontainers.BindMount(dataDir, testcontainers.ContainerMountTarget("/data/db")),
-		}),
+		testcontainers.WithHostConfigModifier(bindHostConfig(dataDir, "/data/db")),
 	}
 
 	container, err := mongodb.Run(ctx, "mongo:7", opts...)
@@ -1069,7 +1058,7 @@ func startMongoDBDemo(ctx context.Context, name, dataDir string, status demoStat
 	}
 	return cleanup, &DemoConnInfo{
 		Host:    host,
-		Port:    uint16(port.Int()),
+		Port:    port.Num(),
 		DBName:  "graphjin_demo",
 		ConnStr: connStr,
 		Type:    "mongodb",
@@ -1799,7 +1788,7 @@ func runDemoSeed() {
 }
 
 func seedDefaultSource() string {
-	for _, source := range conf.Core.Sources {
+	for _, source := range conf.Sources {
 		if !source.Default {
 			continue
 		}

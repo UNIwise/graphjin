@@ -205,7 +205,7 @@ func configSchemaCmd() *cobra.Command {
 		Long:  "Print the JSON Schema for the GraphJin config file. Redirect it next to your config and reference it with a `# yaml-language-server: $schema=...` modeline for editor autocomplete.",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			os.Stdout.Write(serv.ConfigJSONSchema())
+			_, _ = os.Stdout.Write(serv.ConfigJSONSchema())
 		},
 	}
 }
@@ -263,7 +263,9 @@ func editConfigFile(key, rawValue string, unset bool) {
 	if err := enc.Encode(&doc); err != nil {
 		log.Fatalf("cannot encode config: %s", err)
 	}
-	enc.Close()
+	if err := enc.Close(); err != nil {
+		log.Fatalf("cannot encode config: %s", err)
+	}
 	updated := buf.Bytes()
 
 	// Hard gate: the edited file must still load (catches YAML syntax and type
@@ -325,13 +327,13 @@ func loadEditedConfig(target string, updated []byte) (*serv.Config, error) {
 // uses at startup (see core initConfig), so offline validation matches how the
 // server would actually load the config — without any database connection.
 func validateCoreOffline(conf *serv.Config) error {
-	if err := conf.Core.ValidateIsSourcesUsed(); err != nil {
+	if err := conf.ValidateIsSourcesUsed(); err != nil {
 		return err
 	}
-	if err := conf.Core.NormalizeSources(); err != nil {
+	if err := conf.NormalizeSources(); err != nil {
 		return err
 	}
-	return conf.Core.Validate()
+	return conf.Validate()
 }
 
 // --- YAML node helpers (comment-preserving) ---

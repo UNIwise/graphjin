@@ -680,10 +680,7 @@ func (co *Compiler) compileQuery(qc *QCode, op *graph.Operation, role string) er
 		}
 	}
 
-	for {
-		if st.Len() == 0 {
-			break
-		}
+	for st.Len() != 0 {
 
 		if id >= maxSelectors {
 			return fmt.Errorf("selector limit reached (%d)", maxSelectors)
@@ -906,7 +903,7 @@ func validateGroupByJoinShape(qc *QCode) error {
 			distinctNames[j] = dc.Name
 		}
 		return fmt.Errorf(
-			"nested selection '%s' joins through parent column '%s.%s', which is not in distinct: [%s]. The GROUP BY collapses '%s' away, leaving many %s values per group with no defined join. Root the query at the dimension table instead — see get_workflow_guide for the metric-by-dimension pattern.",
+			"nested selection '%s' joins through parent column '%s.%s', which is not in distinct: [%s]. The GROUP BY collapses '%s' away, leaving many %s values per group with no defined join. Root the query at the dimension table instead — see get_workflow_guide for the metric-by-dimension pattern",
 			child.Table, parent.Table, joinCol, strings.Join(distinctNames, ", "), joinCol, joinCol)
 	}
 	return nil
@@ -1822,11 +1819,11 @@ func addAndFilterLast(fil *Filter, ex *Exp) {
 	// add a new `and` exp and hook the above saved exp pointer a child
 	// we don't want to modify an exp object thats common (from filter config)
 	fil.Exp = newExpOp(OpAnd)
-	fil.Exp.Children = fil.Exp.childrenA[:2]
+	fil.Children = fil.childrenA[:2]
 
 	// here we append the filter to the last child
-	fil.Exp.Children[0] = ow
-	fil.Exp.Children[1] = ex
+	fil.Children[0] = ow
+	fil.Children[1] = ex
 }
 
 func addAndFilter(fil *Filter, ex *Exp) {
@@ -1840,9 +1837,9 @@ func addAndFilter(fil *Filter, ex *Exp) {
 	// add a new `and` exp and hook the above saved exp pointer a child
 	// we don't want to modify an exp object thats common (from filter config)
 	fil.Exp = newExpOp(OpAnd)
-	fil.Exp.Children = fil.Exp.childrenA[:2]
-	fil.Exp.Children[0] = ex
-	fil.Exp.Children[1] = ow
+	fil.Children = fil.childrenA[:2]
+	fil.Children[0] = ex
+	fil.Children[1] = ow
 }
 
 func addNotFilter(fil *Filter, ex *Exp) {
@@ -1860,9 +1857,9 @@ func addNotFilter(fil *Filter, ex *Exp) {
 	// add a new `and` exp and hook the above saved exp pointer a child
 	// we don't want to modify an exp object thats common (from filter config)
 	fil.Exp = newExpOp(OpAnd)
-	fil.Exp.Children = fil.Exp.childrenA[:2]
-	fil.Exp.Children[0] = ex1
-	fil.Exp.Children[1] = ow
+	fil.Children = fil.childrenA[:2]
+	fil.Children[0] = ex1
+	fil.Children[1] = ow
 }
 
 func compileFilter(s *sdata.DBSchema, ti sdata.DBTable, filter []string, isJSON bool) (*Exp, bool, error) {

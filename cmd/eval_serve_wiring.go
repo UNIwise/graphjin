@@ -44,7 +44,7 @@ func newEvalServeWiring(cmd *cobra.Command, size int, opts evalServeOptions) (*e
 			return nil, err
 		}
 		support = &config
-		fmt.Fprintf(cmd.OutOrStdout(),
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(),
 			"Distiller and responder stages served by %s; the policy answers the executor.\n", label)
 	}
 

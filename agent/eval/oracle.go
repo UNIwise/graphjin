@@ -211,7 +211,7 @@ func postJSON(ctx context.Context, client HTTPDoer, url string, headers map[stri
 	if err != nil {
 		return nil, 0, latency, err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(response.Body, 8<<20))
 	if err != nil {
 		return nil, response.StatusCode, latency, err

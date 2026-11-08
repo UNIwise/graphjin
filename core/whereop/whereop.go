@@ -157,8 +157,8 @@ func Classify(dbType string, isArray bool) Family {
 	t = unwrapWrappers(t)
 
 	compact := strings.ReplaceAll(t, " ", "")
-	switch {
-	case compact == "tinyint(1)", compact == "number(1)", compact == "number(1,0)", compact == "bit(1)":
+	switch compact {
+	case "tinyint(1)", "number(1)", "number(1,0)", "bit(1)":
 		return Boolean
 	}
 

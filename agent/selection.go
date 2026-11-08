@@ -822,10 +822,8 @@ func (a *Agent) enrichCatalog(ctx context.Context, req Request, protocol *protoc
 	if len(extra.reads) == 0 {
 		return out
 	}
-	extra.consume(protocol)
-	for _, read := range extra.reads {
-		prepared.reads = append(prepared.reads, read)
-	}
+	_, _ = extra.consume(protocol)
+	prepared.reads = append(prepared.reads, extra.reads...)
 	for _, id := range extra.stats.DetailIDs {
 		prepared.stats.DetailIDs = appendUniqueString(prepared.stats.DetailIDs, id)
 	}

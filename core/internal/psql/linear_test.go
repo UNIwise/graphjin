@@ -22,16 +22,20 @@ func TestLinearExecutionMySQL(t *testing.T) {
 	}
 
 	// Add role configuration similar to TestMain
-	qc.AddRole("user", "public", "users", qcode.TRConfig{
+	if err := qc.AddRole("user", "public", "users", qcode.TRConfig{
 		Query: qcode.QueryConfig{
 			Columns: []string{"id", "full_name", "email", "products"},
 		},
 		Insert: qcode.InsertConfig{},
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 
-	qc.AddRole("user", "public", "products", qcode.TRConfig{
+	if err := qc.AddRole("user", "public", "products", qcode.TRConfig{
 		Insert: qcode.InsertConfig{},
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	pc := psql.NewCompiler(psql.Config{
 		DBType: "mysql",
@@ -108,11 +112,15 @@ func TestLinearExecutionSQLite(t *testing.T) {
 	}
 
 	// Config same roles
-	qc.AddRole("user", "public", "users", qcode.TRConfig{
+	if err := qc.AddRole("user", "public", "users", qcode.TRConfig{
 		Query:  qcode.QueryConfig{Columns: []string{"id", "full_name"}},
 		Insert: qcode.InsertConfig{},
-	})
-	qc.AddRole("user", "public", "products", qcode.TRConfig{Insert: qcode.InsertConfig{}})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := qc.AddRole("user", "public", "products", qcode.TRConfig{Insert: qcode.InsertConfig{}}); err != nil {
+		t.Fatal(err)
+	}
 
 	pc := psql.NewCompiler(psql.Config{DBType: "sqlite"})
 
@@ -162,21 +170,25 @@ func TestLinearExecutionMySQLWithExplicitID(t *testing.T) {
 	}
 
 	// Add role configuration with insert allowed on products
-	qc.AddRole("user", "public", "products", qcode.TRConfig{
+	if err := qc.AddRole("user", "public", "products", qcode.TRConfig{
 		Query: qcode.QueryConfig{
 			Columns: []string{"id", "name", "description", "price", "owner_id"},
 		},
 		Insert: qcode.InsertConfig{
 			Columns: []string{"id", "name", "description", "price"},
 		},
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	// Add users for the join
-	qc.AddRole("user", "public", "users", qcode.TRConfig{
+	if err := qc.AddRole("user", "public", "users", qcode.TRConfig{
 		Query: qcode.QueryConfig{
 			Columns: []string{"id", "full_name", "email"},
 		},
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	pc := psql.NewCompiler(psql.Config{
 		DBType: "mysql",

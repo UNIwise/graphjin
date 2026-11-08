@@ -19,91 +19,6 @@ type cachedDiscoveredCandidate struct {
 
 // registerOnboardingTools is retained as an inert compatibility hook.
 func (ms *mcpServer) registerOnboardingTools() {
-	return
-
-	if !ms.service.conf.MCP.AllowDevTools {
-		return
-	}
-
-	ms.srv.AddTool(mcp.NewTool(
-		"plan_database_setup",
-		mcp.WithDescription("Plan database setup without changing config. Returns ranked candidates and required next actions. "+
-			"Response includes machine-readable next-step guidance in the `next` field."),
-		mcp.WithArray("targets",
-			mcp.Description("Optional explicit targets to check. Each item: {type?, host?, port?, user?, password?, dbname?, connection_string?}."),
-			mcp.Items(map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"type":              map[string]any{"type": "string", "description": "Database type (postgres, mysql, mssql, oracle, mongodb, snowflake)"},
-					"host":              map[string]any{"type": "string", "description": "Hostname or IP address"},
-					"port":              map[string]any{"type": "number", "description": "Port number"},
-					"user":              map[string]any{"type": "string", "description": "Username for authentication"},
-					"password":          map[string]any{"type": "string", "description": "Password for authentication"},
-					"dbname":            map[string]any{"type": "string", "description": "Database name"},
-					"connection_string": map[string]any{"type": "string", "description": "Direct connection string (required for Snowflake targets)"},
-				},
-			}),
-		),
-		mcp.WithBoolean("scan_local",
-			mcp.Description("Scan localhost ports and sqlite files (default true)."),
-		),
-		mcp.WithBoolean("scan_unix_sockets",
-			mcp.Description("Scan local Unix sockets for PostgreSQL/MySQL/MongoDB (default false)."),
-		),
-	), ms.handlePlanDatabaseSetup)
-
-	ms.srv.AddTool(mcp.NewTool(
-		"test_database_connection",
-		mcp.WithDescription("Test one candidate or explicit database config without mutating GraphJin config. "+
-			"Response includes machine-readable next-step guidance in the `next` field."),
-		mcp.WithString("candidate_id",
-			mcp.Description("Candidate ID from discover_databases/plan_database_setup."),
-		),
-		mcp.WithObject("config",
-			mcp.Description("Explicit config: {type, host?, port?, path?, user?, password?, dbname?, connection_string?}. For Snowflake, connection_string is required."),
-		),
-		mcp.WithObject("discovery_options",
-			mcp.Description("Optional options used when resolving candidate_id."),
-		),
-		mcp.WithObject("candidate_snapshot",
-			mcp.Description("Optional candidate object from a previous discover/plan call."),
-		),
-	), ms.handleTestDatabaseConnection)
-
-	ms.srv.AddTool(mcp.NewTool(
-		"get_onboarding_status",
-		mcp.WithDescription("Get current onboarding status: configured databases, active database, schema readiness and table counts. "+
-			"Response includes machine-readable next-step guidance in the `next` field."),
-	), ms.handleGetOnboardingStatus)
-
-	if ms.service.conf.MCP.AllowConfigUpdates {
-		ms.srv.AddTool(mcp.NewTool(
-			"apply_database_setup",
-			mcp.WithDescription("Apply selected database setup to GraphJin config and reload schema. Requires explicit selection. "+
-				"Response includes machine-readable next-step guidance in the `next` field."),
-			mcp.WithString("candidate_id",
-				mcp.Description("Candidate ID to apply (recommended)."),
-			),
-			mcp.WithObject("config",
-				mcp.Description("Explicit config override: {type, host?, port?, path?, user?, password?, dbname?, connection_string?}. For Snowflake, connection_string is required."),
-			),
-			mcp.WithString("database_alias",
-				mcp.Description("Config key for this database. Defaults to dbname or graphjin_dev."),
-			),
-			mcp.WithBoolean("create_if_not_exists",
-				mcp.Description("Create database before connect (dev mode only)."),
-			),
-			mcp.WithObject("discovery_options",
-				mcp.Description("Optional options used when resolving candidate_id."),
-			),
-			mcp.WithObject("candidate_snapshot",
-				mcp.Description("Optional candidate object from a previous discover/plan call."),
-			),
-			mcp.WithBoolean("allow_unverified_apply",
-				mcp.Description("When false (default), setup is blocked unless candidate auth_status is 'ok'."),
-			),
-		), ms.handleApplyDatabaseSetup)
-	}
 }
 
 type SetupPlanResult struct {
@@ -149,35 +64,6 @@ type ConnectionTestResult struct {
 	Next          *NextGuidance      `json:"next,omitempty"`
 }
 
-func (ms *mcpServer) handleTestDatabaseConnection(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.GetArguments()
-	candidate, err := ms.resolveCandidate(args)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-
-	user, _ := candidate.ConfigSnippet["user"].(string)
-	password, _ := candidate.ConfigSnippet["password"].(string)
-	probeDatabase(&candidate, user, password)
-	enrichDiscoveredDatabase(&candidate)
-	ms.cacheCandidates([]DiscoveredDatabase{candidate})
-
-	test := ConnectionTestResult{
-		Success:   candidate.AuthStatus == "ok",
-		Candidate: candidate,
-	}
-	if dbname, _ := candidate.ConfigSnippet["dbname"].(string); dbname != "" {
-		test.RecommendedDB = dbname
-	}
-	test.Next = ms.nextForConnectionTest(test)
-
-	data, err := mcpMarshalJSON(test, true)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	return mcpToolResultJSONBytes(data), nil
-}
-
 type OnboardingStatusResult struct {
 	ConfiguredDatabases []string      `json:"configured_databases"`
 	ActiveDatabase      string        `json:"active_database,omitempty"`
@@ -185,36 +71,6 @@ type OnboardingStatusResult struct {
 	TableCount          int           `json:"table_count"`
 	Warnings            []string      `json:"warnings,omitempty"`
 	Next                *NextGuidance `json:"next,omitempty"`
-}
-
-func (ms *mcpServer) handleGetOnboardingStatus(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	conf := &ms.service.conf.Core
-	result := OnboardingStatusResult{
-		ConfiguredDatabases: make([]string, 0, len(conf.Databases)),
-		ActiveDatabase:      ms.getActiveDatabase(),
-	}
-	for name := range conf.Databases {
-		result.ConfiguredDatabases = append(result.ConfiguredDatabases, name)
-	}
-	if ms.service.gj != nil {
-		result.SchemaReady = ms.service.gj.SchemaReady()
-		if result.SchemaReady {
-			result.TableCount = len(ms.service.gj.GetTables())
-		}
-	}
-	if len(result.ConfiguredDatabases) == 0 {
-		result.Warnings = append(result.Warnings, "no configured databases")
-	}
-	if !result.SchemaReady {
-		result.Warnings = append(result.Warnings, "schema not ready")
-	}
-	result.Next = ms.nextForOnboardingStatus(result)
-
-	data, err := mcpMarshalJSON(result, true)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	return mcpToolResultJSONBytes(data), nil
 }
 
 type ApplyDatabaseSetupResult struct {

@@ -194,7 +194,7 @@ func (s *graphjinService) captureStartupReadOnlyPolicy() {
 	}
 	if s.startupReadOnlyDBs == nil {
 		s.startupReadOnlyDBs = make(map[string]bool)
-		for name, database := range s.conf.Core.Databases {
+		for name, database := range s.conf.Databases {
 			if database.ReadOnly {
 				s.startupReadOnlyDBs[name] = true
 			}
@@ -202,7 +202,7 @@ func (s *graphjinService) captureStartupReadOnlyPolicy() {
 	}
 	if s.startupReadOnlySources == nil {
 		s.startupReadOnlySources = make(map[string]bool)
-		for _, source := range s.conf.Core.Sources {
+		for _, source := range s.conf.Sources {
 			if source.ReadOnly {
 				s.startupReadOnlySources[canonicalSourcePolicyName(source.Name)] = true
 			}

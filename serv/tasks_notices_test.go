@@ -64,7 +64,7 @@ func TestTaskOpenUnlinkedNoticeIsBoundedAndOwnerScoped(t *testing.T) {
 		t.Fatalf("identity-free run should not get task notice: %+v", resp.Notices)
 	}
 
-	svc.conf.Core.Tasks.Enabled = false
+	svc.conf.Tasks.Enabled = false
 	resp = gjagent.Response{}
 	svc.appendTaskNotices(ctx, gjagent.Request{}, &resp)
 	if len(resp.Notices) != 0 {

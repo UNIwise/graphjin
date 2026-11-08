@@ -240,7 +240,7 @@ func startDeviceFlow(ctx context.Context, server string) (*deviceStartResp, bool
 	if err != nil {
 		return nil, false, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	b, _ := io.ReadAll(resp.Body)
 	switch resp.StatusCode {
 	case http.StatusOK:
@@ -298,7 +298,7 @@ func pollDeviceToken(ctx context.Context, server, deviceCode string) (*deviceTok
 	if err != nil {
 		return nil, false, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, _ := io.ReadAll(resp.Body)
 	var tr deviceTokenResp
 	_ = json.Unmarshal(raw, &tr)

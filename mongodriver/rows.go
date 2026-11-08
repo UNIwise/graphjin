@@ -1,6 +1,7 @@
 package mongodriver
 
 import (
+	"context"
 	"database/sql/driver"
 	"encoding/json"
 	"io"
@@ -36,7 +37,7 @@ func (r *Rows) Close() error {
 	}
 	r.closed = true
 	if r.cursor != nil {
-		return r.cursor.Close(nil)
+		return r.cursor.Close(context.Background())
 	}
 	return nil
 }
@@ -44,7 +45,7 @@ func (r *Rows) Close() error {
 // Next moves to the next row.
 // For GraphJin, we return the entire document as JSON in a single column.
 func (r *Rows) Next(dest []driver.Value) error {
-	if r.cursor == nil || !r.cursor.Next(nil) {
+	if r.cursor == nil || !r.cursor.Next(context.Background()) {
 		return io.EOF
 	}
 

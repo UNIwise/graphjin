@@ -238,7 +238,7 @@ func keywordBoundary(sql string, idx int) bool {
 		return true
 	}
 	ch := sql[idx]
-	return !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_')
+	return (ch < 'a' || ch > 'z') && (ch < 'A' || ch > 'Z') && (ch < '0' || ch > '9') && ch != '_'
 }
 
 func valueForColumn(col string) driver.Value {

@@ -231,7 +231,7 @@ func TestProviderRateLimiterSerializesConcurrentAdmission(t *testing.T) {
 	if calls.Load() != 1 {
 		t.Fatalf("provider calls=%d, want one admitted call", calls.Load())
 	}
-	if !(first == nil && errors.Is(second, context.Canceled)) && !(second == nil && errors.Is(first, context.Canceled)) {
+	if (first != nil || !errors.Is(second, context.Canceled)) && (second != nil || !errors.Is(first, context.Canceled)) {
 		t.Fatalf("results=(%v, %v), want one success and one cancellation", first, second)
 	}
 }

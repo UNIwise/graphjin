@@ -50,7 +50,8 @@ func (s *DBSchema) resolvePathPair(from, to edgeInfo, opts pathOptions) (res gra
 	res.from = from
 	res.to = to
 
-	if opts.kind == pathThroughTable {
+	switch opts.kind {
+	case pathThroughTable:
 		if edges, ok := s.directPathEdges(from, to, opts); ok {
 			res.edges = edges
 			return res, nil
@@ -61,7 +62,7 @@ func (s *DBSchema) resolvePathPair(from, to edgeInfo, opts pathOptions) (res gra
 			return res, ErrThoughNodeNotFound
 		}
 		opts.throughNode = v.nodeID
-	} else if opts.kind == pathThroughNone {
+	case pathThroughNone:
 		lines := s.relationshipGraph.GetEdges(from.nodeID, to.nodeID)
 		if cands := s.detectDirectAmbiguityFromLines(lines, from); len(cands) > 1 {
 			return res, &AmbiguousPathError{
@@ -80,7 +81,7 @@ func (s *DBSchema) resolvePathPair(from, to edgeInfo, opts pathOptions) (res gra
 			res.edges = edges
 			return res, nil
 		}
-	} else if opts.kind == pathThroughColumn {
+	case pathThroughColumn:
 		opts.through = strings.ToLower(opts.through)
 		if from.nodeID == to.nodeID {
 			if edges, ok := s.directRecursivePathEdges(from, opts); ok {

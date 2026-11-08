@@ -52,8 +52,9 @@ func parseGQL(fs FS, fname, rootDir string, r io.Writer) (err error) {
 	for s.Scan() {
 		m := incRe.FindStringSubmatch(s.Text())
 		if len(m) == 0 {
-			r.Write(s.Bytes()) //nolint:errcheck
-			r.Write([]byte("\n"))
+			// r is an in-memory writer in every caller; write errors are not expected.
+			_, _ = r.Write(s.Bytes())
+			_, _ = r.Write([]byte("\n"))
 			continue
 		}
 

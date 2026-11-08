@@ -98,7 +98,7 @@ func TestDiscoveryRedisCoordinatesColdBuilderWarmFollowersAndFencing(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`CREATE TABLE customers (id INTEGER PRIMARY KEY, email TEXT)`); err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestDiscoveryRedisOutageUsesValidFilesystemGenerationAndRejectsColdStampede
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`CREATE TABLE customers (id INTEGER PRIMARY KEY)`); err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestSingleNodeDiscoveryAndSemanticWorkWithoutRedis(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`CREATE TABLE customers (id INTEGER PRIMARY KEY, email TEXT)`); err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +309,7 @@ func TestDiscoveryUnchangedRefreshProducesNoNewGeneration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`CREATE TABLE customers (id INTEGER PRIMARY KEY)`); err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +342,7 @@ func TestDiscoveryConfigChangeRotatesCoordinatorAndActivatesGeneration(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`CREATE TABLE customers (id INTEGER PRIMARY KEY)`); err != nil {
 		t.Fatal(err)
 	}
@@ -366,7 +366,7 @@ func TestDiscoveryConfigChangeRotatesCoordinatorAndActivatesGeneration(t *testin
 	}
 	service.discovery = manager
 	oldFingerprint := manager.fingerprint
-	service.conf.Core.Blocklist = []string{"audit_.*"}
+	service.conf.Blocklist = []string{"audit_.*"}
 	service.gj.Close()
 	service.gj, err = core.NewGraphJin(&service.conf.Core, db,
 		core.OptionSetFS(fs),
@@ -410,7 +410,7 @@ func TestDiscoveryActiveGenerationMissingFromSharedFilesystemDoesNotRebuildLocal
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`CREATE TABLE customers (id INTEGER PRIMARY KEY)`); err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +437,7 @@ func TestSemanticRedisGenerationHandoffBuildsDocumentsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`CREATE TABLE metrics (id INTEGER PRIMARY KEY, revenue NUMERIC, recorded_at TIMESTAMP)`); err != nil {
 		t.Fatal(err)
 	}
@@ -495,7 +495,7 @@ func TestDiscoveryRefreshRecompilesChangedColumns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err = db.Exec(`CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO customers VALUES (1, 'Ada')`); err != nil {
 		t.Fatal(err)
 	}

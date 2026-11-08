@@ -52,7 +52,7 @@ func (t *bootTimer) mark(name string) {
 	out, worker := t.out, t.worker
 	t.mu.Unlock()
 	if out != nil {
-		fmt.Fprintf(out, "boot worker=%d phase=%-20s %s\n", worker, name, elapsed.Round(time.Millisecond))
+		_, _ = fmt.Fprintf(out, "boot worker=%d phase=%-20s %s\n", worker, name, elapsed.Round(time.Millisecond))
 	}
 }
 

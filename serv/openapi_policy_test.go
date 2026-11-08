@@ -31,7 +31,7 @@ func TestStartupReadOnlySourcePolicySurvivesLaterConfigChanges(t *testing.T) {
 	if !policy["protected_api"] {
 		t.Fatalf("startup policy was lost: %+v", policy)
 	}
-	sources := append([]core.SourceConfig(nil), svc.conf.Core.Sources...)
+	sources := append([]core.SourceConfig(nil), svc.conf.Sources...)
 	sources[0].Name = "protected_api"
 	preserveProtectedReadOnlySources(sources, policy)
 	if !sources[0].ReadOnly {
@@ -116,7 +116,7 @@ func TestCatalogOpenAPIMutationsAreCallerScoped(t *testing.T) {
 		t.Fatalf("member operations = %+v", visible.APIOperations)
 	}
 
-	conf.Core.Sources[0].Access.Write = core.AccessModeAccount
+	conf.Sources[0].Access.Write = core.AccessModeAccount
 	visible = s.filterCatalogAPIOperationsForContext(operator, md)
 	if len(visible.APIOperations) != 1 || visible.APIOperations[0].Method != "GET" {
 		t.Fatalf("account-scoped operation leaked without account identity: %+v", visible.APIOperations)
@@ -126,7 +126,7 @@ func TestCatalogOpenAPIMutationsAreCallerScoped(t *testing.T) {
 	if len(visible.APIOperations) != 2 {
 		t.Fatalf("account-scoped operator operations = %+v", visible.APIOperations)
 	}
-	conf.Core.Sources[0].Access.Write = core.AccessModeAuthenticated
+	conf.Sources[0].Access.Write = core.AccessModeAuthenticated
 
 	conf.Agent.ReadOnly = true
 	visible = s.filterCatalogAPIOperationsForContext(operator, md)

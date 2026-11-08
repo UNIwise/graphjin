@@ -40,7 +40,7 @@ func evalFileSourceRoots(projectPath string, target gjeval.Target) (map[string]s
 		return nil, err
 	}
 	roots := map[string]string{}
-	for _, source := range config.Core.Sources {
+	for _, source := range config.Sources {
 		if !strings.EqualFold(source.Kind, "file") || strings.TrimSpace(source.Root) == "" {
 			continue
 		}

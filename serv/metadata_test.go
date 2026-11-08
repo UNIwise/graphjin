@@ -164,7 +164,7 @@ func TestPopulateMetadataDBDedupesSnapshotRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if _, err := db.Exec(metadataSchemaSQL); err != nil {
 		t.Fatal(err)
@@ -234,7 +234,7 @@ func TestMetadataCatalogCardsLifecycleColumns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if _, err := db.Exec(metadataSchemaSQL); err != nil {
 		t.Fatal(err)
@@ -354,7 +354,7 @@ func TestEnsureMetadataCatalogCardColumnsMigratesExistingTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if _, err := db.Exec(`CREATE TABLE gj_catalog_cards (
 		id TEXT PRIMARY KEY,
@@ -479,7 +479,7 @@ func createMetadataAppDB(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`CREATE TABLE users (
 		id integer primary key,
 		email text not null unique,

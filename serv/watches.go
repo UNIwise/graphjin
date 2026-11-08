@@ -243,7 +243,7 @@ func (h watchControlPlane) allWatchEventRowsForProjection(ctx context.Context) (
 		return nil, err
 	}
 	if h.service != nil && h.service.conf != nil {
-		rows = trimWatchEventProjectionRows(rows, h.service.conf.Core.EffectiveWatchesConfig())
+		rows = trimWatchEventProjectionRows(rows, h.service.conf.EffectiveWatchesConfig())
 	}
 	return rows, nil
 }
@@ -497,7 +497,7 @@ func (h watchControlPlane) upsertWatch(ctx context.Context, root core.ManagedMut
 	failureCount := int64(0)
 	definitionChanged := existing == nil
 	flowRequired := enrichEnabled && enrichCfg.Kind == "flow"
-	flowChanged := flowRequired && existing == nil
+	var flowChanged bool
 	if existing != nil {
 		createdAt = stringMapValue(existing, "created_at")
 		if createdAt == "" {
@@ -1232,7 +1232,7 @@ func (s *graphjinService) watchesEnabled() bool {
 }
 
 func configWatchesEnabled(conf *Config) bool {
-	return conf != nil && conf.Core.Artifacts.Enabled && conf.Core.Watches.Enabled
+	return conf != nil && conf.Artifacts.Enabled && conf.Watches.Enabled
 }
 
 func (s *graphjinService) watchDB() (*sql.DB, string, string, string, bool) {
@@ -1892,7 +1892,7 @@ func (s *graphjinService) watchRoleAllowed(role string) bool {
 	if s == nil || s.conf == nil {
 		return true
 	}
-	for _, configured := range s.conf.Core.Roles {
+	for _, configured := range s.conf.Roles {
 		if strings.EqualFold(strings.TrimSpace(configured.Name), role) {
 			return true
 		}

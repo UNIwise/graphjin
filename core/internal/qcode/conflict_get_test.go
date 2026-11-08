@@ -141,7 +141,7 @@ func TestInsertConflictGetUsesReadPermissionsForReturningRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := qc.Selects[qc.Roots[0]]
-	if root.Where.Exp == nil || root.Where.Exp.Op != qcode.OpFalse {
+	if root.Where.Exp == nil || root.Where.Op != qcode.OpFalse {
 		t.Fatalf("expected the normal query filter on conflict-get return, got %#v", root.Where.Exp)
 	}
 	if !qc.InsertConflictReadFiltered {

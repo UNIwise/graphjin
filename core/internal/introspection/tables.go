@@ -323,7 +323,7 @@ func discoverCassandraKeys(ctx context.Context, db *sql.DB) (map[string]cassandr
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := map[string]cassandraKeyInfo{}
 	for rows.Next() {
@@ -514,7 +514,7 @@ func discoverSnowflakeColumns(ctx context.Context, db *sql.DB, blockList []strin
 	if err != nil {
 		return nil, fmt.Errorf("error fetching columns: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Snowflake restricts INFORMATION_SCHEMA, so columns come from SHOW COLUMNS
 	// read back via RESULT_SCAN. Bare SHOW scopes to the session's pinned schema;
@@ -700,7 +700,7 @@ func queryAndScanDiscoveredColumns(
 }
 
 func scanDiscoveredColumnRows(rows *sql.Rows, dbtype string, blockList []string, cmap map[string]DBColumn) error {
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	i := len(cmap)
 	// we have to rescan and update columns to overcome
@@ -893,7 +893,7 @@ func enrichAndCollectColumns(ctx context.Context, db *sql.DB, dbtype string, cma
 			defer cancel2()
 			rows2, err := db.QueryContext(qctx2, viewPKStmt)
 			if err == nil {
-				defer rows2.Close()
+				defer func() { _ = rows2.Close() }()
 				for rows2.Next() {
 					var schema, table, column string
 					if err := rows2.Scan(&schema, &table, &column); err != nil {
@@ -1321,7 +1321,7 @@ GROUP BY n.nspname, c.relname, co.conname, fn.nspname, fc.relname`
 	if err != nil {
 		return nil, fmt.Errorf("error fetching composite FKs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var result []CompositeFKInfo
 	for rows.Next() {
@@ -1352,7 +1352,7 @@ func discoverCompositeFKsCSV(ctx context.Context, db *sql.DB, dbtype, query stri
 	if err != nil {
 		return nil, fmt.Errorf("error fetching composite FKs: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	normalize := dbtype == "oracle" || dbtype == "mssql" || dbtype == "snowflake" || dbtype == "bigquery"
 
@@ -1467,7 +1467,7 @@ func DiscoverFunctions(ctx context.Context, db *sql.DB, dbtype string, blockList
 	if err != nil {
 		return nil, fmt.Errorf("error fetching functions: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var funcs []DBFunction
 	fm := make(map[string]int)
@@ -1552,7 +1552,7 @@ func discoverSnowflakeCompositeFKsViaShow(ctx context.Context, db *sql.DB) ([]Co
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	qid, err := snowflakeShowQueryID(ctx, conn, "SHOW IMPORTED KEYS")
 	if err != nil {
@@ -1567,7 +1567,7 @@ func discoverSnowflakeCompositeFKsViaShow(ctx context.Context, db *sql.DB) ([]Co
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var result []CompositeFKInfo
 	for rows.Next() {
@@ -1627,7 +1627,7 @@ func discoverClusteringKeys(ctx context.Context, db *sql.DB) (map[string][]strin
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// cluster_by comes from RESULT_SCAN of SHOW TABLES (scoped to the pinned
 	// schema), so both statements must run on this one connection.
@@ -1645,7 +1645,7 @@ func discoverClusteringKeys(ctx context.Context, db *sql.DB) (map[string][]strin
 	if err != nil {
 		return nil, fmt.Errorf("error fetching clustering keys: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := make(map[string][]string)
 	for rows.Next() {
@@ -1683,25 +1683,6 @@ func autoSetPartitionFromClustering(t *DBTable) {
 		t.PartitionKey = leadingKey
 		t.PartitionRangeDays = 60
 	}
-}
-
-var implicitPartitionCandidates = []string{
-	"created_at",
-	"event_time",
-	"updated_at",
-	"timestamp",
-	"ingested_at",
-}
-
-func resolveImplicitPartitionKey(t *DBTable) string {
-	for _, cand := range implicitPartitionCandidates {
-		for i := range t.Columns {
-			if strings.EqualFold(t.Columns[i].Name, cand) && isTemporalType(t.Columns[i].Type) {
-				return t.Columns[i].Name
-			}
-		}
-	}
-	return ""
 }
 
 // isTemporalType returns true if the column type string represents a

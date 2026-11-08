@@ -1,11 +1,10 @@
 package dialect
 
-
-
 import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/dosco/graphjin/core/v3/internal/qcode"
 	"github.com/dosco/graphjin/core/v3/internal/sdata"
@@ -337,7 +336,8 @@ func (d *OracleDialect) RenderValPrefix(ctx Context, ex *qcode.Exp) bool {
 			op = " AND "
 		}
 		ctx.WriteString(`(`)
-		if ex.Right.ValType == qcode.ValVar {
+		switch ex.Right.ValType {
+		case qcode.ValVar:
 			// Variable case: use JSON_TABLE to iterate keys from the variable array
 			// For has_key_all: NOT EXISTS (keys where NOT JSON_EXISTS)
 			// For has_key_any: EXISTS (keys where JSON_EXISTS)
@@ -360,7 +360,7 @@ func (d *OracleDialect) RenderValPrefix(ctx Context, ex *qcode.Exp) bool {
 			}
 			ctx.ColWithTable(table, ex.Left.Col.Name)
 			ctx.WriteString(`, '$."' || "VALUE" || '"'))`)
-		} else if ex.Right.ValType == qcode.ValList {
+		case qcode.ValList:
 			// Static list case: generate JSON_EXISTS checks for each key
 			for i, key := range ex.Right.ListVal {
 				if i != 0 {
@@ -415,14 +415,15 @@ func (d *OracleDialect) RenderValPrefix(ctx Context, ex *qcode.Exp) bool {
 		ctx.WriteString(colType)
 		ctx.WriteString(` PATH '$')) WHERE "VALUE" IN (`)
 
-		if ex.Right.ValType == qcode.ValVar {
+		switch ex.Right.ValType {
+		case qcode.ValVar:
 			// Variable list: use JSON_TABLE to unpack
 			ctx.WriteString(`SELECT "VALUE" FROM JSON_TABLE(`)
 			ctx.AddParam(Param{Name: ex.Right.Val, Type: "json", IsArray: true})
 			ctx.WriteString(`, '$[*]' COLUMNS("VALUE" `)
 			ctx.WriteString(colType)
 			ctx.WriteString(` PATH '$'))`)
-		} else if ex.Right.ValType == qcode.ValList {
+		case qcode.ValList:
 			// Static list: render inline values
 			for i := range ex.Right.ListVal {
 				if i != 0 {
@@ -971,7 +972,7 @@ func (d *OracleDialect) RenderVarDeclaration(ctx Context, name, typeName string)
 	case "integer", "int4", "int8", "bigint":
 		ctx.WriteString("NUMBER")
 	case "text", "varchar":
-		ctx.WriteString("VARCHAR2(4000)") 
+		ctx.WriteString("VARCHAR2(4000)")
 	default:
 		ctx.WriteString("VARCHAR2(4000)") // Safe default? Or NUMBER?
 	}
@@ -1000,7 +1001,7 @@ func (d *OracleDialect) RenderMutateToRecordSet(ctx Context, m *qcode.Mutate, n 
 				ctx.WriteString(`.`)
 			}
 			if d.EnableCamelcase {
-				ctx.WriteString(strings.Title(p))
+				ctx.WriteString(titleWords(p))
 			} else {
 				ctx.WriteString(p)
 			}
@@ -1081,7 +1082,7 @@ func (d *OracleDialect) RenderSetSessionVar(ctx Context, name, value string) boo
 }
 
 func (d *OracleDialect) RenderArray(ctx Context, items []string) {
-	// Oracle has no direct array literal syntax simple enough for this context, 
+	// Oracle has no direct array literal syntax simple enough for this context,
 	// unless PL/SQL or type constructor.
 	// But GraphJin uses JSON mainly.
 	// Use JSON_ARRAY(...)
@@ -1117,7 +1118,7 @@ func (d *OracleDialect) getVarName(m qcode.Mutate) string {
 }
 
 func (d *OracleDialect) RenderLinearInsert(ctx Context, m *qcode.Mutate, qc *qcode.QCode, varName string, renderColVal func(qcode.MColumn)) {
-    ctx.WriteString("INSERT INTO ")
+	ctx.WriteString("INSERT INTO ")
 	ctx.ColWithTable(m.Ti.Schema, m.Ti.Name)
 	ctx.WriteString(" (")
 	i := 0
@@ -1470,7 +1471,6 @@ func (d *OracleDialect) RenderLinearDisconnect(ctx Context, m *qcode.Mutate, qc 
 	renderFilter()
 }
 
-
 func (d *OracleDialect) ModifySelectsForMutation(qc *qcode.QCode) {
 	if qc.Type != qcode.QTMutation || qc.Selects == nil {
 		return
@@ -1569,9 +1569,7 @@ func (d *OracleDialect) ModifySelectsForMutation(qc *qcode.QCode) {
 		}
 
 		// Set the WHERE clause
-		if exp != nil {
-			sel.Where.Exp = exp
-		}
+		sel.Where.Exp = exp
 	}
 }
 
@@ -1711,4 +1709,18 @@ func (d *OracleDialect) RequiresJSONQueryWrapper() bool {
 
 func (d *OracleDialect) RequiresNullOnEmptySelect() bool {
 	return true // Oracle needs NULL when no columns rendered to avoid empty JSON_OBJECT()
+}
+
+// titleWords upper-cases the first letter of every word and leaves the rest as is.
+// It replaces the deprecated strings.Title with the same word boundaries: a word
+// starts after anything that is not a letter, a digit or an underscore.
+func titleWords(s string) string {
+	prev := ' '
+	return strings.Map(func(r rune) rune {
+		defer func() { prev = r }()
+		if unicode.IsLetter(prev) || unicode.IsDigit(prev) || prev == '_' {
+			return r
+		}
+		return unicode.ToTitle(r)
+	}, s)
 }

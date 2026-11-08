@@ -2,7 +2,6 @@ package serv
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"sort"
@@ -278,15 +277,4 @@ func watchEventScopesFromRows(rows []map[string]any) []watchEventScope {
 		out = append(out, scope)
 	}
 	return out
-}
-
-func watchEventsResourceText(content []mcp.ResourceContents) (watchEventsUnseenResource, error) {
-	var payload watchEventsUnseenResource
-	if len(content) == 0 {
-		return payload, nil
-	}
-	if text, ok := content[0].(mcp.TextResourceContents); ok {
-		return payload, json.Unmarshal([]byte(text.Text), &payload)
-	}
-	return payload, nil
 }

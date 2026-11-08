@@ -25,7 +25,7 @@ func newSecuredTestHandler(t *testing.T) http.Handler {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	t.Cleanup(func() {
-		db.Close()
+		_ = db.Close()
 	})
 
 	for _, stmt := range []string{

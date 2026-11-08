@@ -912,9 +912,9 @@ func (s *gstate) execute(c context.Context, conn *sql.Conn) (err error) {
 								if k > 0 {
 									ib.WriteString(", ")
 								}
-								ib.WriteString(fmt.Sprintf("('%s', '%s')",
+								fmt.Fprintf(&ib, "('%s', '%s')",
 									strings.ReplaceAll(gjIdsKey, "'", "''"),
-									strings.ReplaceAll(id, "'", "''")))
+									strings.ReplaceAll(id, "'", "''"))
 							}
 							insertSQL := ib.String()
 
@@ -1411,40 +1411,6 @@ func (s *gstate) processRefreshResult() ([]byte, []RowRef, error) {
 		return nil, nil, nil
 	}
 	return NewResponseProcessor(qc).ProcessForCache(s.data)
-}
-
-// tryCacheSet stores the response in cache with row-level indices.
-func (s *gstate) tryCacheSet(c context.Context) {
-	if s.gj.responseCache == nil || s.cacheKey == "" || len(s.data) == 0 || s.cacheHit {
-		return
-	}
-
-	cs := s.cs
-	if cs == nil || cs.st.qc == nil {
-		return
-	}
-
-	qc := cs.st.qc
-
-	// Skip caching for offset-based pagination (pages shift on insert/delete)
-	if s.hasOffsetPagination(qc) {
-		return
-	}
-
-	// Skip caching for responses that are too large
-	if len(s.data) > maxResponseSize {
-		return
-	}
-
-	// Process response to extract row refs and clean __gj_id fields
-	processor := NewResponseProcessor(qc)
-	cleaned, refs, err := processor.ProcessForCache(s.data)
-	if err != nil {
-		return
-	}
-
-	// Store in cache
-	_ = s.gj.responseCache.Set(c, s.cacheKey, cleaned, refs, s.queryStarted)
 }
 
 // invalidateCache invalidates cache entries for rows affected by a mutation.

@@ -81,8 +81,8 @@ func (s *graphjinService) validateSourceScopedSchemaReload(database string) erro
 	if s == nil || s.gj == nil {
 		return fmt.Errorf("GraphJin engine is not initialized")
 	}
-	if s.conf != nil && s.conf.Core.IsSourcesUsed() {
-		source, ok := s.conf.Core.SourceByName(database)
+	if s.conf != nil && s.conf.IsSourcesUsed() {
+		source, ok := s.conf.SourceByName(database)
 		if !ok {
 			return fmt.Errorf("database %q is not a configured source; omit database for a full reload", database)
 		}
@@ -101,7 +101,7 @@ func (s *graphjinService) validateSourceScopedSchemaReload(database string) erro
 	if !found {
 		return fmt.Errorf("database %q is not configured; omit database for a full reload", database)
 	}
-	if s.conf == nil || !s.conf.Core.IsSourcesUsed() {
+	if s.conf == nil || !s.conf.IsSourcesUsed() {
 		return nil
 	}
 	return nil

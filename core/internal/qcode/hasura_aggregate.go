@@ -147,11 +147,11 @@ func (co *Compiler) rewriteHasuraAggregateRoot(op *graph.Operation, root *graph.
 			}
 			column, err := hasuraCountColumn(table)
 			if err != nil {
-				return HasuraAggregateRoot{}, fmt.Errorf("Hasura-compatible count on %q: %w", requestedRoot, err)
+				return HasuraAggregateRoot{}, fmt.Errorf("hasura-compatible count on %q: %w", requestedRoot, err)
 			}
 			native := "count_" + column
 			if seenNative[native] {
-				return HasuraAggregateRoot{}, fmt.Errorf("Hasura-compatible aggregate field %q is selected more than once on %q", native, requestedRoot)
+				return HasuraAggregateRoot{}, fmt.Errorf("hasura-compatible aggregate field %q is selected more than once on %q", native, requestedRoot)
 			}
 			seenNative[native] = true
 			field.Name = native
@@ -185,7 +185,7 @@ func (co *Compiler) rewriteHasuraAggregateRoot(op *graph.Operation, root *graph.
 				}
 				native := functionName + "_" + columnField.Name
 				if seenNative[native] {
-					return HasuraAggregateRoot{}, fmt.Errorf("Hasura-compatible aggregate field %q is selected more than once on %q", native, requestedRoot)
+					return HasuraAggregateRoot{}, fmt.Errorf("hasura-compatible aggregate field %q is selected more than once on %q", native, requestedRoot)
 				}
 				seenNative[native] = true
 				columnField.Name = native
@@ -268,7 +268,7 @@ func hasuraAggregateSupportError(requestedRoot, baseName string, table sdata.DBT
 		countColumn = column
 	}
 	return fmt.Errorf(
-		"Hasura-compatible aggregate root %q: %s. Supported form: %s { aggregate { count sum { <column> } avg { <column> } min { <column> } max { <column> } } }. Native equivalent: %s { count_%s sum_<column> avg_<column> min_<column> max_<column> }",
+		"hasura-compatible aggregate root %q: %s. Supported form: %s { aggregate { count sum { <column> } avg { <column> } min { <column> } max { <column> } } }. Native equivalent: %s { count_%s sum_<column> avg_<column> min_<column> max_<column> }",
 		requestedRoot, detail, requestedRoot, baseName, countColumn)
 }
 

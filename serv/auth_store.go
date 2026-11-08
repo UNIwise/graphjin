@@ -99,7 +99,7 @@ func (a *authLoginService) state() authStateStore {
 }
 
 func (s *graphjinService) authStoreEnabled() bool {
-	return s != nil && s.conf != nil && s.conf.AuthLogin.Enabled && s.conf.Core.Artifacts.Enabled
+	return s != nil && s.conf != nil && s.conf.AuthLogin.Enabled && s.conf.Artifacts.Enabled
 }
 
 // initAuthLogin builds the built-in login service on top of the shared
@@ -127,7 +127,7 @@ func (s *graphjinService) openAuthStateStore(ctx context.Context) (authStateStor
 		return nil, nil
 	}
 	schema := s.conf.Core.EffectiveArtifactsConfig().Schema
-	if s.conf.Core.Artifacts.AutoInitEnabled() {
+	if s.conf.Artifacts.AutoInitEnabled() {
 		for _, stmt := range authStoreDDL(dbType, schema) {
 			if _, err := db.ExecContext(ctx, stmt); err != nil {
 				return nil, fmt.Errorf("auth_login: create auth store: %w", err)

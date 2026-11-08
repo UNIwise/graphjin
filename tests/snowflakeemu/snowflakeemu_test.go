@@ -63,7 +63,7 @@ func TestConnectorSatisfiesSnowflakeDiscovery(t *testing.T) {
 		Backend:    BackendDuckDB,
 		Fallback:   FallbackStrict,
 	}))
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	assertSnowflakeDiscovery(t, db)
 }
@@ -78,7 +78,7 @@ func TestSnowflakeDiscoveryUsesShowForKeys(t *testing.T) {
 		Backend:    BackendDuckDB,
 		Fallback:   FallbackStrict,
 	}))
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	assertSnowflakeDiscovery(t, db)
 
@@ -151,7 +151,7 @@ func TestDuckDBBackendStrictExampleQuery(t *testing.T) {
 		TestName: "strict-example",
 		RunID:    "unit",
 	}))
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	conf := &core.Config{
 		DBType:               "snowflake",
@@ -192,7 +192,7 @@ func TestCaptureJSONL(t *testing.T) {
 		RunID:      "unit",
 		Backend:    BackendDuckDB,
 	}))
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if _, err := db.ExecContext(context.Background(), "SHOW IMPORTED KEYS IN SCHEMA"); err != nil {
 		t.Fatal(err)
@@ -249,7 +249,7 @@ func TestCaptureJSONLDuckDBExecutionError(t *testing.T) {
 		Backend:    BackendDuckDB,
 		Fallback:   FallbackPlaceholderOnError,
 	}))
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	var value string
 	if err := db.QueryRowContext(context.Background(), `SELECT "MISSING"."ID" FROM "PUBLIC"."MISSING" AS "MISSING" WHERE "MISSING"."ID" = ?`, 1).Scan(&value); err != nil {

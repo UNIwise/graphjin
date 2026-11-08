@@ -30,7 +30,7 @@ func discoverUniqueIndexes(ctx context.Context, db *sql.DB) (map[string][][]stri
 	if err != nil {
 		return nil, fmt.Errorf("error fetching unique indexes: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type indexKey struct{ schema, table, index string }
 

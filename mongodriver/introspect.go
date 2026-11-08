@@ -149,7 +149,7 @@ func (c *Conn) introspectInfo(ctx context.Context, q *QueryDSL) (driver.Rows, er
 
 	// Convert version to int for GraphJin
 	versionInt := 0
-	fmt.Sscanf(version, "%d", &versionInt)
+	_, _ = fmt.Sscanf(version, "%d", &versionInt)
 
 	// Return: version, schema (database name), name (database name)
 	columns := []string{"version", "schema", "name"}
@@ -187,7 +187,7 @@ func (c *Conn) getCollectionValidator(ctx context.Context, collName string) map[
 	if err != nil {
 		return fields
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	if !cursor.Next(ctx) {
 		return fields
@@ -242,7 +242,7 @@ func (c *Conn) sampleCollectionFields(ctx context.Context, coll *mongo.Collectio
 	if err != nil {
 		return fields
 	}
-	defer cursor.Close(ctx)
+	defer func() { _ = cursor.Close(ctx) }()
 
 	for cursor.Next(ctx) {
 		var doc bson.M
@@ -360,10 +360,11 @@ func isGeoJSOND(d bson.D) bool {
 	var typeVal any
 	var hasType, hasCoords bool
 	for _, elem := range d {
-		if elem.Key == "type" {
+		switch elem.Key {
+		case "type":
 			typeVal = elem.Value
 			hasType = true
-		} else if elem.Key == "coordinates" {
+		case "coordinates":
 			hasCoords = true
 		}
 	}

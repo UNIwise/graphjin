@@ -633,7 +633,7 @@ func newSQLiteMCPServerWithSchema(t *testing.T, ddl []string) *mcpServer {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	for _, stmt := range ddl {
 		if _, err := db.Exec(stmt); err != nil {
@@ -838,7 +838,7 @@ func newSQLiteReadyMCPServer(t *testing.T, queries map[string]string, queryVars 
 		t.Fatalf("open sqlite: %v", err)
 	}
 	t.Cleanup(func() {
-		db.Close()
+		_ = db.Close()
 	})
 
 	for _, stmt := range []string{

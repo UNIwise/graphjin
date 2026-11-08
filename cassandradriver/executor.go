@@ -124,7 +124,7 @@ func normalizeValue(v any) any {
 			out[fmt.Sprint(normalizeValue(k.Interface()))] = normalizeValue(rv.MapIndex(k).Interface())
 		}
 		return out
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if rv.IsNil() {
 			return nil
 		}

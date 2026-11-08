@@ -152,7 +152,7 @@ func TestDirectDDLLowering(t *testing.T) {
 		Backend:  hostedemu.BackendDuckDB,
 		Fallback: hostedemu.FallbackStrict,
 	})
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ddl := `
 CREATE TABLE public.events (
@@ -184,7 +184,7 @@ func TestDiscoverySurfaces(t *testing.T) {
 		Backend:  hostedemu.BackendDuckDB,
 		Fallback: hostedemu.FallbackStrict,
 	})
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	var tableName, distStyle string
 	if err := db.QueryRowContext(context.Background(),
@@ -200,7 +200,7 @@ func TestDiscoverySurfaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var sawEmail, sawOrgID bool
 	for rows.Next() {
 		var databaseName, schemaName, tableName, columnName, nullable, dataType, remarks, sortKeyType, encoding, collation string
@@ -263,7 +263,7 @@ func TestDefaultFixtureBootsDuckDB(t *testing.T) {
 		TestName: "redshift-default-fixture",
 		RunID:    "unit",
 	}, NewAdapter()))
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	var tableName string
 	if err := db.QueryRowContext(context.Background(),
@@ -287,7 +287,7 @@ func TestDiscoveryUsesBatchMetadataForLargeCatalog(t *testing.T) {
 		Backend:    hostedemu.BackendDuckDB,
 		Fallback:   hostedemu.FallbackStrict,
 	})
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	rows, err := db.QueryContext(context.Background(), `SHOW TABLES FROM SCHEMA dev.public`)
 	if err != nil {
@@ -372,7 +372,7 @@ func readCaptureEvents(path string) ([]captureLine, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var out []captureLine
 	sc := bufio.NewScanner(f)

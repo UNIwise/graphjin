@@ -18,8 +18,8 @@ func TestScopedCopySharesTheConfigLock(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		scoped.configLocker().Lock()
-		scoped.configLocker().Unlock()
 		close(done)
+		scoped.configLocker().Unlock()
 	}()
 	select {
 	case <-done:

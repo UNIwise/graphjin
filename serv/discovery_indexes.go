@@ -105,7 +105,7 @@ func sqliteIndexes(ctx context.Context, db *sql.DB, table string) ([]IndexInfo, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type idxMeta struct {
 		name    string
@@ -138,7 +138,7 @@ func sqliteIndexes(ctx context.Context, db *sql.DB, table string) ([]IndexInfo, 
 				cols = append(cols, c.String)
 			}
 		}
-		colRows.Close()
+		_ = colRows.Close()
 		if len(cols) == 0 {
 			continue
 		}
@@ -206,7 +206,7 @@ func scanIndexRows(ctx context.Context, db *sql.DB, q string, args ...any) ([]In
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []IndexInfo
 	for rows.Next() {

@@ -654,8 +654,8 @@ func TestGraphQLControlPlaneSecurityQuery(t *testing.T) {
 		AllowWorkflowUpdates: true,
 		AllowRawQueries:      true,
 	}, createSQLiteDBFile(t, "app.sqlite3", true), func(conf *Config) {
-		conf.Core.Mode = "agentic"
-		conf.Core.System.Capabilities = map[string]bool{featurecap.KeySecurityRead: true}
+		conf.Mode = "agentic"
+		conf.System.Capabilities = map[string]bool{featurecap.KeySecurityRead: true}
 	})
 	if err := svc.refreshSystemNanoDB(); err != nil {
 		t.Fatalf("refresh system nanodb: %v", err)
@@ -1014,8 +1014,8 @@ func TestAssertArtifactNanoRoleDefaultsFailsClosed(t *testing.T) {
 func TestSourceModeSystemRootAccessCoversAnonAndCustomRoles(t *testing.T) {
 	t.Run("dev anon can inspect graphjin roots by default", func(t *testing.T) {
 		svc := newControlPlaneGraphQLTestServiceWithConfig(t, MCPConfig{}, createSQLiteDBFile(t, "source-mode-dev-anon.sqlite3", true), func(conf *Config) {
-			conf.Core.Mode = "dev"
-			conf.Core.DefaultBlock = false
+			conf.Mode = "dev"
+			conf.DefaultBlock = false
 		})
 
 		res, err := svc.gj.GraphQL(context.Background(), `query {
@@ -1039,8 +1039,8 @@ func TestSourceModeSystemRootAccessCoversAnonAndCustomRoles(t *testing.T) {
 
 	t.Run("configured non-admin role gets catalog but not security", func(t *testing.T) {
 		svc := newControlPlaneGraphQLTestServiceWithConfig(t, MCPConfig{}, createSQLiteDBFile(t, "source-mode-custom-role.sqlite3", true), func(conf *Config) {
-			conf.Core.Mode = "agentic"
-			conf.Core.Roles = append(conf.Core.Roles, core.Role{Name: "member"})
+			conf.Mode = "agentic"
+			conf.Roles = append(conf.Roles, core.Role{Name: "member"})
 		})
 		ctx := context.WithValue(context.Background(), core.UserIDKey, "user_1")
 		ctx = context.WithValue(ctx, core.IdentityVarsKey, map[string]interface{}{"account_id": "acct_1", "user_id": "user_1"})
@@ -1082,7 +1082,7 @@ func TestGraphQLControlPlaneAgenticSystemPermissions(t *testing.T) {
 
 	t.Run("normal user gets catalog but disabled read features remain absent", func(t *testing.T) {
 		svc := newControlPlaneGraphQLTestServiceWithConfig(t, MCPConfig{}, createSQLiteDBFile(t, "agentic-perms.sqlite3", true), func(conf *Config) {
-			conf.Core.Mode = "agentic"
+			conf.Mode = "agentic"
 		})
 		if err := svc.fs.Put(filepath.Join(svc.workflowBasePath(), "daily_report.js"), []byte(`function main(input) { return { ok: true }; }`)); err != nil {
 			t.Fatalf("write workflow: %v", err)
@@ -1121,9 +1121,9 @@ func TestGraphQLControlPlaneAgenticSystemPermissions(t *testing.T) {
 
 	t.Run("explicit security grant unblocks only gj_security", func(t *testing.T) {
 		svc := newControlPlaneGraphQLTestServiceWithConfig(t, MCPConfig{}, createSQLiteDBFile(t, "agentic-security-grant.sqlite3", true), func(conf *Config) {
-			conf.Core.Mode = "agentic"
-			conf.Core.System.Capabilities = map[string]bool{featurecap.KeySecurityRead: true}
-			conf.Core.System.RootAccess = map[string]string{"gj_security": core.AccessModeAuthenticated}
+			conf.Mode = "agentic"
+			conf.System.Capabilities = map[string]bool{featurecap.KeySecurityRead: true}
+			conf.System.RootAccess = map[string]string{"gj_security": core.AccessModeAuthenticated}
 		})
 
 		res, err := svc.gj.GraphQL(userCtx, `query {
@@ -1157,7 +1157,7 @@ func TestGraphQLControlPlaneAgenticSystemPermissions(t *testing.T) {
 
 	t.Run("prod has no catalog surface", func(t *testing.T) {
 		svc := newControlPlaneGraphQLTestServiceWithConfig(t, MCPConfig{}, createSQLiteDBFile(t, "prod-perms.sqlite3", true), func(conf *Config) {
-			conf.Core.Mode = "prod"
+			conf.Mode = "prod"
 		})
 
 		// New security model: prod hard-gates the agentic surface, so the system
@@ -1188,7 +1188,7 @@ func TestGraphQLRuntimeRootAvailabilityAndPermissions(t *testing.T) {
 
 	t.Run("dev can read runtime root by default", func(t *testing.T) {
 		svc := newControlPlaneGraphQLTestServiceWithConfig(t, MCPConfig{}, createSQLiteDBFile(t, "runtime-dev.sqlite3", true), func(conf *Config) {
-			conf.Core.Mode = "dev"
+			conf.Mode = "dev"
 		})
 		res, err := svc.gj.GraphQL(context.Background(), query, nil, &core.RequestConfig{})
 		if err != nil {
@@ -1209,7 +1209,7 @@ func TestGraphQLRuntimeRootAvailabilityAndPermissions(t *testing.T) {
 
 	t.Run("unavailable in prod mode", func(t *testing.T) {
 		svc := newControlPlaneGraphQLTestServiceWithConfig(t, MCPConfig{}, createSQLiteDBFile(t, "runtime-prod.sqlite3", true), func(conf *Config) {
-			conf.Core.Mode = "prod"
+			conf.Mode = "prod"
 		})
 		_, err := svc.gj.GraphQL(userCtx, query, nil, &core.RequestConfig{})
 		if err == nil {
@@ -1219,7 +1219,7 @@ func TestGraphQLRuntimeRootAvailabilityAndPermissions(t *testing.T) {
 
 	t.Run("agentic admin can read bounded runtime rows", func(t *testing.T) {
 		svc := newControlPlaneGraphQLTestServiceWithConfig(t, MCPConfig{}, createSQLiteDBFile(t, "runtime-agentic.sqlite3", true), func(conf *Config) {
-			conf.Core.Mode = "agentic"
+			conf.Mode = "agentic"
 		})
 		svc.recordRuntimeEvent(context.Background(), runtimeEvent{
 			Phase:      "test",
@@ -1265,7 +1265,7 @@ func TestGraphQLRuntimeRootAvailabilityAndPermissions(t *testing.T) {
 
 	t.Run("anon, non-admin, and runtime read false are blocked", func(t *testing.T) {
 		svc := newControlPlaneGraphQLTestServiceWithConfig(t, MCPConfig{}, createSQLiteDBFile(t, "runtime-agentic-blocks.sqlite3", true), func(conf *Config) {
-			conf.Core.Mode = "agentic"
+			conf.Mode = "agentic"
 		})
 		// Role-blocked system roots deny with an error instead of a null root.
 		for name, ctx := range map[string]context.Context{
@@ -1283,8 +1283,8 @@ func TestGraphQLRuntimeRootAvailabilityAndPermissions(t *testing.T) {
 		}
 
 		disabled := newControlPlaneGraphQLTestServiceWithConfig(t, MCPConfig{}, createSQLiteDBFile(t, "runtime-agentic-disabled.sqlite3", true), func(conf *Config) {
-			conf.Core.Mode = "agentic"
-			conf.Core.System.Capabilities = map[string]bool{featurecap.KeyRuntimeRead: false}
+			conf.Mode = "agentic"
+			conf.System.Capabilities = map[string]bool{featurecap.KeyRuntimeRead: false}
 		})
 		_, err := disabled.gj.GraphQL(adminCtx, query, nil, &core.RequestConfig{})
 		if err == nil || !strings.Contains(err.Error(), "not found") {
@@ -1336,7 +1336,7 @@ func TestGraphQLControlPlaneCatalogSecurityGuidance(t *testing.T) {
 
 func TestGraphQLControlPlaneCatalogRuntimeGuidance(t *testing.T) {
 	svc := newControlPlaneGraphQLTestServiceWithConfig(t, MCPConfig{}, createSQLiteDBFile(t, "runtime-guidance.sqlite3", true), func(conf *Config) {
-		conf.Core.Mode = "agentic"
+		conf.Mode = "agentic"
 	})
 
 	res, err := svc.gj.GraphQL(context.WithValue(context.Background(), core.UserIDKey, "company-user"), `query {
@@ -1603,7 +1603,7 @@ func TestSecurityNanoRowsCoverSourceCapabilityRegistry(t *testing.T) {
 func TestGraphQLControlPlaneWorkflowExecutionReadOnlyMatrix(t *testing.T) {
 	t.Run("prod mode blocks execution because the surface is absent", func(t *testing.T) {
 		svc := newControlPlaneGraphQLTestServiceWithConfig(t, MCPConfig{}, createSQLiteDBFile(t, "prod.sqlite3", true), func(conf *Config) {
-			conf.Core.Mode = "prod"
+			conf.Mode = "prod"
 		})
 
 		ctx := context.WithValue(context.Background(), core.UserIDKey, "company-user")
@@ -1621,7 +1621,7 @@ func TestGraphQLControlPlaneWorkflowExecutionReadOnlyMatrix(t *testing.T) {
 
 	t.Run("agentic mode allows execution unless read-only is configured", func(t *testing.T) {
 		svc := newControlPlaneGraphQLTestServiceWithConfig(t, MCPConfig{}, createSQLiteDBFile(t, "agentic.sqlite3", true), func(conf *Config) {
-			conf.Core.Mode = "agentic"
+			conf.Mode = "agentic"
 		})
 
 		ctx := context.WithValue(context.Background(), core.UserIDKey, "company-user")
@@ -1638,8 +1638,8 @@ func TestGraphQLControlPlaneWorkflowExecutionReadOnlyMatrix(t *testing.T) {
 
 	t.Run("workflow execute capability disables execution in agentic mode", func(t *testing.T) {
 		svc := newControlPlaneGraphQLTestServiceWithConfig(t, MCPConfig{}, createSQLiteDBFile(t, "agentic-readonly.sqlite3", true), func(conf *Config) {
-			conf.Core.Mode = "agentic"
-			conf.Core.Workflows.Capabilities = map[string]bool{featurecap.KeyWorkflowExecute: false}
+			conf.Mode = "agentic"
+			conf.Workflows.Capabilities = map[string]bool{featurecap.KeyWorkflowExecute: false}
 		})
 
 		ctx := context.WithValue(context.Background(), core.UserIDKey, "company-user")
@@ -1653,7 +1653,7 @@ func TestGraphQLControlPlaneWorkflowExecutionReadOnlyMatrix(t *testing.T) {
 
 	t.Run("agentic mode blocks anonymous execution by role default", func(t *testing.T) {
 		svc := newControlPlaneGraphQLTestServiceWithConfig(t, MCPConfig{}, createSQLiteDBFile(t, "agentic-anon.sqlite3", true), func(conf *Config) {
-			conf.Core.Mode = "agentic"
+			conf.Mode = "agentic"
 		})
 
 		_, err := svc.gj.GraphQL(context.Background(), `mutation {
@@ -1666,7 +1666,7 @@ func TestGraphQLControlPlaneWorkflowExecutionReadOnlyMatrix(t *testing.T) {
 
 	t.Run("workflow execution rejects non-insert mutations", func(t *testing.T) {
 		svc := newControlPlaneGraphQLTestServiceWithConfig(t, MCPConfig{}, createSQLiteDBFile(t, "agentic-update.sqlite3", true), func(conf *Config) {
-			conf.Core.Mode = "agentic"
+			conf.Mode = "agentic"
 		})
 
 		ctx := context.WithValue(context.Background(), core.UserIDKey, "company-user")
@@ -1903,15 +1903,15 @@ func TestGraphQLConfigUpdateSourcesPatchPreservesSourcesAndRecordsCatalogEvent(t
 
 	_ = applyControlPlaneConfigUpdate(t, svc, fmt.Sprintf(`update_sources: [{ name: "main", path: %q }]`, replacementPath), "id catalog_revision")
 
-	main, ok := svc.conf.Core.SourceByName("main")
+	main, ok := svc.conf.SourceByName("main")
 	if !ok {
 		t.Fatal("expected main source after source patch")
 	}
 	if main.Path != replacementPath || main.Kind != sourcecap.KindDatabase || main.Type != "sqlite" || !main.Default {
 		t.Fatalf("source patch did not preserve/update expected fields: %+v", main)
 	}
-	if len(svc.conf.Core.Sources) != 1 {
-		t.Fatalf("update_sources should leave only external providers, got %+v", svc.conf.Core.Sources)
+	if len(svc.conf.Sources) != 1 {
+		t.Fatalf("update_sources should leave only external providers, got %+v", svc.conf.Sources)
 	}
 	if got := svc.conf.Core.Databases["main"].Path; got != replacementPath {
 		t.Fatalf("renormalized database path = %q, want %q", got, replacementPath)
@@ -1953,7 +1953,7 @@ func TestGraphQLConfigHasNoInternalSourceRows(t *testing.T) {
 	svc := newControlPlaneGraphQLTestService(t, MCPConfig{AllowConfigUpdates: true}, createSQLiteDBFile(t, "remove-source.sqlite3", true))
 
 	for _, internal := range []string{"graphjin", "workflows"} {
-		if _, ok := svc.conf.Core.SourceByName(internal); ok {
+		if _, ok := svc.conf.SourceByName(internal); ok {
 			t.Fatalf("built-in feature %q leaked into configured sources", internal)
 		}
 		if rows := queryCatalogOwnerIDs(t, svc, internal); len(rows) != 0 {
@@ -2312,8 +2312,8 @@ func TestGraphQLControlPlaneConfigPreviewApplyGuards(t *testing.T) {
 
 func TestGraphQLControlPlaneConfigRuntimeEventsAreRedacted(t *testing.T) {
 	svc := newControlPlaneGraphQLTestServiceWithConfig(t, MCPConfig{AllowConfigUpdates: true}, createSQLiteDBFile(t, "config-runtime-redacted.sqlite3", true), func(conf *Config) {
-		conf.Core.Mode = "agentic"
-		conf.Core.System.Capabilities = map[string]bool{featurecap.KeyConfigWrite: true, featurecap.KeyRuntimeRead: true}
+		conf.Mode = "agentic"
+		conf.System.Capabilities = map[string]bool{featurecap.KeyConfigWrite: true, featurecap.KeyRuntimeRead: true}
 	})
 	revision := controlPlaneConfigRevision(t, svc)
 
@@ -2458,7 +2458,7 @@ func findTestSource(svc *graphjinService, name string) (core.SourceConfig, bool)
 	if svc == nil || svc.conf == nil {
 		return core.SourceConfig{}, false
 	}
-	for _, source := range svc.conf.Core.Sources {
+	for _, source := range svc.conf.Sources {
 		if source.Name == name {
 			return source, true
 		}
@@ -2484,7 +2484,7 @@ func TestGraphQLControlPlaneAllowsAppGJPrefixWithBuiltInSystemTables(t *testing.
 	if _, err := db.Exec(`CREATE TABLE gj_custom (id INTEGER PRIMARY KEY)`); err != nil {
 		t.Fatalf("create reserved table: %v", err)
 	}
-	db.Close()
+	_ = db.Close()
 
 	conf := &Config{
 		Core: core.Config{
@@ -2529,12 +2529,12 @@ func latestRuntimeEventDetails(t *testing.T, svc *graphjinService, phase, detail
 }
 
 func allowAgenticGraphJinConfigWrite(conf *Config) {
-	conf.Core.Mode = "agentic"
-	if conf.Core.System.Capabilities == nil {
-		conf.Core.System.Capabilities = make(map[string]bool)
+	conf.Mode = "agentic"
+	if conf.System.Capabilities == nil {
+		conf.System.Capabilities = make(map[string]bool)
 	}
-	conf.Core.System.Capabilities[featurecap.KeyConfigWrite] = true
-	conf.Core.System.Capabilities[featurecap.KeyRuntimeRead] = true
+	conf.System.Capabilities[featurecap.KeyConfigWrite] = true
+	conf.System.Capabilities[featurecap.KeyRuntimeRead] = true
 }
 
 func queryCatalogOwnerIDs(t *testing.T, svc *graphjinService, owner string) []string {
@@ -2566,7 +2566,7 @@ func newControlPlaneGraphQLTestServiceWithConfig(t *testing.T, cfg MCPConfig, db
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	fs := newAferoFS(afero.NewMemMapFs(), "/")
 	conf := &Config{

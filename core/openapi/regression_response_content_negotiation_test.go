@@ -13,7 +13,7 @@ func TestLoadedCallersNegotiateDeclaredResponseMediaTypes(t *testing.T) {
 	const vendor = "application/vnd.api+json"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(r.Header.Get("Accept"), vendor) {
-			http.Error(w, "JSON:API Accept required", 406)
+			http.Error(w, "JSON:API Accept required", http.StatusNotAcceptable)
 			return
 		}
 		if r.Method == "POST" && r.Header.Get("Content-Type") != "application/json" {

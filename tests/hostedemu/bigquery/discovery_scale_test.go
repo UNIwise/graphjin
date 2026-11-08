@@ -33,7 +33,7 @@ func TestDiscoveryUsesBatchMetadataForLargeCatalog(t *testing.T) {
 		Backend:    hostedemu.BackendCapture,
 		Fallback:   hostedemu.FallbackStrict,
 	}, NewAdapter()))
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	start := time.Now()
 	gj, err := core.NewGraphJin(&core.Config{
@@ -97,7 +97,7 @@ func readCaptureEvents(path string) ([]captureLine, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var out []captureLine
 	sc := bufio.NewScanner(f)

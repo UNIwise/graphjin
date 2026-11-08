@@ -488,7 +488,7 @@ func (s *graphjinService) sweepWatchEvents(ctx context.Context) (int, error) {
 	if _, _, _, _, ok := s.watchDB(); !ok {
 		return 0, nil
 	}
-	cfg := s.conf.Core.EffectiveWatchesConfig()
+	cfg := s.conf.EffectiveWatchesConfig()
 	eventRows, err := s.internalStoreAllRows(ctx, "watch_events", "", `id watch_id created_at`, nil)
 	if err != nil {
 		return 0, err
@@ -796,7 +796,7 @@ func (s *graphjinService) deliverWatchWebhook(ctx context.Context, def watchRunt
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, watchDeliveryMaxResponseBody))
 	receipt := map[string]any{
 		"status":      "delivered",
@@ -838,7 +838,7 @@ func (s *graphjinService) enrichWatchEvent(ctx context.Context, def *watchRuntim
 		return s.triageWatchEvent(ctx, def, eventID, dataJSON, evidenceJSON, cfg)
 	}
 	status := "pending"
-	enrichment := map[string]any{}
+	var enrichment map[string]any
 	if cfg.MaxSteps <= 0 || cfg.MaxSteps > 4 {
 		cfg.MaxSteps = 4
 	}

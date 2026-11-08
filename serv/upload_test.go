@@ -42,7 +42,7 @@ func buildMultipart(t *testing.T, operations, fileMap string, files map[string]s
 			t.Fatal(err)
 		}
 	}
-	mw.Close()
+	_ = mw.Close()
 
 	r, err := http.NewRequest("POST", "/api/v1/graphql", &buf)
 	if err != nil {
@@ -125,8 +125,10 @@ func TestParseMultipart_NestedPath(t *testing.T) {
 func TestParseMultipart_MissingMap(t *testing.T) {
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
-	mw.WriteField("operations", `{"query":"mutation { x }"}`)
-	mw.Close()
+	if err := mw.WriteField("operations", `{"query":"mutation { x }"}`); err != nil {
+		t.Fatal(err)
+	}
+	_ = mw.Close()
 
 	r, _ := http.NewRequest("POST", "/", &buf)
 	r.Header.Set("Content-Type", mw.FormDataContentType())

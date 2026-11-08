@@ -14,7 +14,7 @@ func TestMetadataSnapshotIsReusedUntilReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`CREATE TABLE customers (id INTEGER PRIMARY KEY, email TEXT)`); err != nil {
 		t.Fatal(err)
 	}

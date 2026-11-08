@@ -385,8 +385,8 @@ func securityConfigID(file string) string {
 }
 
 func securityConfigDisplayName(conf *Config, fallback string) string {
-	if conf != nil && strings.TrimSpace(conf.Serv.AppName) != "" {
-		return strings.TrimSpace(conf.Serv.AppName)
+	if conf != nil && strings.TrimSpace(conf.AppName) != "" {
+		return strings.TrimSpace(conf.AppName)
 	}
 	if strings.TrimSpace(fallback) != "" {
 		return fallback
@@ -398,8 +398,8 @@ func securityConfigPath(conf *Config) string {
 	if conf == nil {
 		return "."
 	}
-	if strings.TrimSpace(conf.Serv.ConfigPath) != "" {
-		return strings.TrimSpace(conf.Serv.ConfigPath)
+	if strings.TrimSpace(conf.ConfigPath) != "" {
+		return strings.TrimSpace(conf.ConfigPath)
 	}
 	if strings.TrimSpace(conf.ConfigPath) != "" {
 		return strings.TrimSpace(conf.ConfigPath)
@@ -419,7 +419,7 @@ func securityActiveConfigFile(conf *Config) string {
 
 func effectiveMode(conf *Config) string {
 	if conf != nil {
-		switch strings.ToLower(strings.TrimSpace(conf.Core.Mode)) {
+		switch strings.ToLower(strings.TrimSpace(conf.Mode)) {
 		case "dev", "development":
 			return modeDev
 		case "prod", "production":
@@ -455,7 +455,7 @@ func securityPolicyEvaluationsForContext(ctx securityReportContext) []securityPo
 		mode = effectiveMode(conf)
 	}
 	production := conf != nil && (conf.Serv.Production || conf.Core.Production)
-	prodSecurity := production && conf != nil && !conf.Core.DisableProdSecurity
+	prodSecurity := production && conf != nil && !conf.DisableProdSecurity
 	mcpEnabled := conf != nil && !conf.mcpDisabled()
 	systemControlPlane := conf != nil && conf.systemControlPlaneEnabled()
 	workflowsEnabled := conf != nil && conf.workflowsEnabled()
@@ -465,7 +465,7 @@ func securityPolicyEvaluationsForContext(ctx securityReportContext) []securityPo
 	workflowReadOnly := controlPlaneTableReadOnly(conf, "", "gj_workflow")
 	workflowExecutionReadOnly := controlPlaneTableReadOnly(conf, "", "gj_workflow_execution")
 	corsWildcard := securityHasWildcard(confAllowedOrigins(conf))
-	uploadEnabled := conf != nil && conf.Serv.Uploads.Enabled
+	uploadEnabled := conf != nil && conf.Uploads.Enabled
 	watchWebhookPolicy := securityWatchWebhookPolicy(conf, mode)
 
 	rows := []securityPolicyEval{
@@ -481,7 +481,7 @@ func securityPolicyEvaluationsForContext(ctx securityReportContext) []securityPo
 			"Dynamic GraphQL queries",
 			"Controls whether raw client GraphQL can compile outside the allow-list.",
 			defaultAllow(mode, true, false, false), !prodSecurity,
-			"disable_production_security", fmt.Sprint(conf != nil && conf.Core.DisableProdSecurity),
+			"disable_production_security", fmt.Sprint(conf != nil && conf.DisableProdSecurity),
 			configBoolExplicit(conf, "disable_production_security"), "critical",
 			"Production and agentic deployments should enforce the allow-list for app data.",
 			"Enable production mode and keep disable_production_security false."),
@@ -496,8 +496,8 @@ func securityPolicyEvaluationsForContext(ctx securityReportContext) []securityPo
 		newSecurityPolicy(mode, "core.introspection", "core", "system", featurecap.KindSystem, "introspection", "read",
 			"GraphQL introspection export",
 			"Controls whether GraphJin writes an introspection JSON file at startup.",
-			defaultAllow(mode, true, false, false), conf != nil && !production && conf.Core.EnableIntrospection,
-			"enable_introspection", fmt.Sprint(conf != nil && conf.Core.EnableIntrospection),
+			defaultAllow(mode, true, false, false), conf != nil && !production && conf.EnableIntrospection,
+			"enable_introspection", fmt.Sprint(conf != nil && conf.EnableIntrospection),
 			configBoolExplicit(conf, "enable_introspection"), "medium",
 			"Introspection metadata can reveal schema shape and should stay off outside development.",
 			"Keep enable_introspection disabled in prod and agentic modes."),
@@ -656,8 +656,8 @@ func securityPolicyEvaluationsForContext(ctx securityReportContext) []securityPo
 		newSecurityPolicy(mode, "serve.web_ui", "serve", "system", featurecap.KindSystem, "admin_ui", "read",
 			"Web UI",
 			"Controls the built-in GraphJin Console HTTP surface.",
-			defaultAllow(mode, true, false, true), conf != nil && conf.Serv.WebUI,
-			"web_ui", fmt.Sprint(conf != nil && conf.Serv.WebUI),
+			defaultAllow(mode, true, false, true), conf != nil && conf.WebUI,
+			"web_ui", fmt.Sprint(conf != nil && conf.WebUI),
 			configBoolExplicit(conf, "web_ui"), "medium",
 			"The console is expected in dev and governed agentic deployments; strict prod remains opt-in.",
 			"Keep web_ui false in prod unless the console is intentionally exposed behind authentication."),
@@ -672,16 +672,16 @@ func securityPolicyEvaluationsForContext(ctx securityReportContext) []securityPo
 		newSecurityPolicy(mode, "core.log_vars", "core", "system", featurecap.KindSystem, "request_variables", "log",
 			"Variable logging",
 			"Controls whether GraphQL variables are logged.",
-			defaultAllow(mode, true, false, false), conf != nil && conf.Core.LogVars,
-			"log_vars", fmt.Sprint(conf != nil && conf.Core.LogVars),
+			defaultAllow(mode, true, false, false), conf != nil && conf.LogVars,
+			"log_vars", fmt.Sprint(conf != nil && conf.LogVars),
 			configBoolExplicit(conf, "log_vars"), "high",
 			"Variables can contain user data, tokens, or secrets.",
 			"Keep log_vars false outside development and rely on structured redacted audit evidence."),
 		newSecurityPolicy(mode, "serve.tracing", "serve", "system", featurecap.KindSystem, "tracing", "emit",
 			"Request tracing",
 			"Controls whether service request tracing is enabled.",
-			defaultAllow(mode, true, true, true), conf != nil && conf.Serv.EnableTracing,
-			"enable_tracing", fmt.Sprint(conf != nil && conf.Serv.EnableTracing),
+			defaultAllow(mode, true, true, true), conf != nil && conf.EnableTracing,
+			"enable_tracing", fmt.Sprint(conf != nil && conf.EnableTracing),
 			configBoolExplicit(conf, "enable_tracing"), "low",
 			"Tracing is acceptable when exporters and payloads are configured to avoid sensitive data.",
 			"Keep trace payloads minimal and avoid variable logging in production traces."),
@@ -751,13 +751,13 @@ func securityOpenAPIOperationPolicies(conf *Config, mode string, operations []co
 			capability, action = sourcecap.KeyAPIDelete, sourcecap.ActionDelete
 		}
 
-		source, sourceFound := conf.Core.OpenAPISourceByName(op.SourceName)
+		source, sourceFound := conf.OpenAPISourceByName(op.SourceName)
 		capabilityAllowed := false
 		accessMode := core.AccessModeBlocked
 		readOnlyBlocked := sourceFound && source.ReadOnly && action != sourcecap.ActionRead
 		if sourceFound {
 			capabilityAllowed, _ = conf.sourceCapabilityForSource(source, capability)
-			access := conf.Core.EffectiveSourceAccess(source)
+			access := conf.EffectiveSourceAccess(source)
 			switch action {
 			case sourcecap.ActionWrite:
 				accessMode = access.Write
@@ -840,10 +840,10 @@ func securityOpenAPIOperationPolicies(conf *Config, mode string, operations []co
 }
 
 func securityWatchWebhookPolicy(conf *Config, mode string) securityPolicyEval {
-	watchesEnabled := conf != nil && conf.Core.Watches.Enabled
+	watchesEnabled := conf != nil && conf.Watches.Enabled
 	cfg := core.WatchesConfig{}
 	if conf != nil {
-		cfg = conf.Core.EffectiveWatchesConfig()
+		cfg = conf.EffectiveWatchesConfig()
 	}
 	invalid := securityInvalidWatchWebhookAllowEntries(cfg.WebhookAllow)
 	empty := len(cfg.WebhookAllow) == 0
@@ -893,7 +893,7 @@ func securitySourcePolicyEvaluations(conf *Config, mode string) []securityPolicy
 		return nil
 	}
 	var rows []securityPolicyEval
-	for _, source := range conf.Core.Sources {
+	for _, source := range conf.Sources {
 		kind := source.CanonicalKind()
 		if kind == "" {
 			continue
@@ -936,7 +936,7 @@ func securitySourcePolicyEvaluations(conf *Config, mode string) []securityPolicy
 			rows = append(rows, policy)
 		}
 	}
-	if conf.Core.IsSourcesUsed() {
+	if conf.IsSourcesUsed() {
 		for _, kind := range featurecap.Kinds() {
 			for _, def := range featurecap.Definitions(kind) {
 				effective := conf.effectiveFeatureCapability(kind, def.Key)
@@ -958,7 +958,7 @@ func securitySourcePolicyEvaluations(conf *Config, mode string) []securityPolicy
 		}
 		return rows
 	}
-	for name, dbConf := range conf.Core.Databases {
+	for name, dbConf := range conf.Databases {
 		if !strings.EqualFold(dbConf.Type, "codesql") {
 			continue
 		}
@@ -976,10 +976,10 @@ func securitySourcePolicyEvaluations(conf *Config, mode string) []securityPolicy
 }
 
 func securitySourceAccessPolicyEvaluations(conf *Config, mode string) []securityPolicyEval {
-	if conf == nil || !conf.Core.IsSourcesUsed() {
+	if conf == nil || !conf.IsSourcesUsed() {
 		return nil
 	}
-	identity := conf.Core.EffectiveIdentityConfig()
+	identity := conf.EffectiveIdentityConfig()
 	rows := []securityPolicyEval{
 		newSecurityPolicy(mode, "system_access.identity", "core", featurecap.KindSystem, featurecap.KindSystem, "identity", "read",
 			"Request identity",
@@ -1000,14 +1000,15 @@ func securitySourceAccessPolicyEvaluations(conf *Config, mode string) []security
 		"identity_query_enabled": strings.TrimSpace(identity.Query) != "",
 	}
 
-	for _, source := range conf.Core.Sources {
+	for _, source := range conf.Sources {
 		name := strings.TrimSpace(source.Name)
 		if name == "" {
 			continue
 		}
 		kind := source.CanonicalKind()
-		access := conf.Core.EffectiveSourceAccess(source)
-		if kind == sourcecap.KindDatabase {
+		access := conf.EffectiveSourceAccess(source)
+		switch kind {
+		case sourcecap.KindDatabase:
 			rows = append(rows, sourceAccessDefaultPolicy(mode, name, kind, "read", access.Read, true))
 			rows = append(rows, sourceAccessDefaultPolicy(mode, name, kind, "write", access.Write, sourceWriteModeSafe(access.Write)))
 			rows = append(rows, sourceAccessDefaultPolicy(mode, name, kind, "delete", access.Delete, sourceDeleteModeSafe(mode, access.Delete)))
@@ -1015,7 +1016,7 @@ func securitySourceAccessPolicyEvaluations(conf *Config, mode string) []security
 			rows[len(rows)-2].Details = sourceAccessDetails(access)
 			rows[len(rows)-1].Details = sourceAccessDetails(access)
 			rows = append(rows, sourceAccessClassificationPolicies(mode, name, kind, access)...)
-		} else if kind == sourcecap.KindAPI {
+		case sourcecap.KindAPI:
 			start := len(rows)
 			rows = append(rows, sourceAccessDefaultPolicy(mode, name, kind, "read", access.Read, true))
 			rows = append(rows, sourceAccessDefaultPolicy(mode, name, kind, "write", access.Write, !source.ReadOnly))
@@ -1038,7 +1039,7 @@ func securitySourceAccessPolicyEvaluations(conf *Config, mode string) []security
 			}
 		}
 	}
-	for root, accessMode := range conf.Core.EffectiveSystemRootAccess() {
+	for root, accessMode := range conf.EffectiveSystemRootAccess() {
 		safe := systemRootAccessSafe(root, accessMode)
 		row := newSecurityPolicy(mode, "system_access.root."+securityIDPart(root), "core", featurecap.KindSystem, featurecap.KindSystem, root, "read",
 			fmt.Sprintf("%s root access", root),
@@ -1050,15 +1051,15 @@ func securitySourceAccessPolicyEvaluations(conf *Config, mode string) []security
 			"Set sensitive roots such as gj_security, gj_runtime, and gj_config to admin.")
 		row.TableName = root
 		provenance := "mode_default"
-		if _, explicit := conf.Core.System.RootAccess[root]; explicit {
+		if _, explicit := conf.System.RootAccess[root]; explicit {
 			provenance = "config_override"
 		}
 		row.Details = map[string]any{"access_mode": accessMode, "admin_roles": identity.AdminRoles, "provenance": provenance}
 		rows = append(rows, row)
 	}
-	if conf.Core.Artifacts.Enabled {
-		cfg := conf.Core.EffectiveArtifactsConfig()
-		source, ok := conf.Core.SourceByName(cfg.Source)
+	if conf.Artifacts.Enabled {
+		cfg := conf.EffectiveArtifactsConfig()
+		source, ok := conf.SourceByName(cfg.Source)
 		validSource := ok && source.CanonicalKind() == sourcecap.KindDatabase && !source.ReadOnly && artifactSecuritySourceSQL(source)
 		row := newSecurityPolicy(mode, "source_access.artifacts", "core", cfg.Source, "database", "gj_artifacts", "write",
 			"Artifact store",
@@ -1151,7 +1152,7 @@ func sourceAccessClassificationPolicies(mode, source, kind string, access core.S
 }
 
 func securitySourceAccessSchemaFindings(ctx securityReportContext, mode string) []securityPolicyEval {
-	if !ctx.Runtime || ctx.Service == nil || ctx.Service.gj == nil || ctx.Conf == nil || !ctx.Conf.Core.IsSourcesUsed() {
+	if !ctx.Runtime || ctx.Service == nil || ctx.Service.gj == nil || ctx.Conf == nil || !ctx.Conf.IsSourcesUsed() {
 		return nil
 	}
 	snapshot, err := ctx.Service.gj.MetadataSnapshot(ctx.Service.metadataSnapshotExcludesFor(ctx.Service.metadataDB, &ctx.Conf.Core, ctx.Service.managedDBs)...)
@@ -1169,12 +1170,12 @@ func securitySourceAccessSchemaFindings(ctx securityReportContext, mode string) 
 	}
 
 	var rows []securityPolicyEval
-	for _, source := range ctx.Conf.Core.Sources {
+	for _, source := range ctx.Conf.Sources {
 		name := strings.TrimSpace(source.Name)
 		if name == "" || source.CanonicalKind() != sourcecap.KindDatabase {
 			continue
 		}
-		access := ctx.Conf.Core.EffectiveSourceAccess(source)
+		access := ctx.Conf.EffectiveSourceAccess(source)
 		for _, table := range snapshot.Tables {
 			if table.DatabaseName != name || table.Type == "remote" || table.Type == "managed" {
 				continue
@@ -1275,10 +1276,10 @@ func sourceAccessMetadataTableListed(list []string, table core.MetadataTable) bo
 }
 
 func sourceAccessMetadataIsArtifactPhysicalTable(conf *Config, source core.SourceConfig, table core.MetadataTable) bool {
-	if conf == nil || !conf.Core.Artifacts.Enabled {
+	if conf == nil || !conf.Artifacts.Enabled {
 		return false
 	}
-	cfg := conf.Core.EffectiveArtifactsConfig()
+	cfg := conf.EffectiveArtifactsConfig()
 	if cfg.Source != source.Name || table.DatabaseName != source.Name {
 		return false
 	}
@@ -1355,34 +1356,6 @@ func systemRootRisk(root string) string {
 	}
 }
 
-func securityActionForSourceCapability(capability string) string {
-	for _, kind := range sourcecap.Kinds() {
-		if def, ok := sourcecap.Lookup(kind, capability); ok {
-			return def.Action
-		}
-	}
-	switch {
-	case strings.HasSuffix(capability, ".read"):
-		return "read"
-	case strings.HasSuffix(capability, ".write"):
-		return "write"
-	case strings.HasSuffix(capability, ".delete"):
-		return "delete"
-	case strings.HasSuffix(capability, ".watch"):
-		return "watch"
-	case strings.HasSuffix(capability, ".execute"):
-		return "execute"
-	case strings.HasSuffix(capability, ".reload"):
-		return "reload"
-	case strings.HasSuffix(capability, ".query"):
-		return "query"
-	case strings.HasSuffix(capability, ".mutate"):
-		return "mutate"
-	default:
-		return "use"
-	}
-}
-
 func sourceCapabilityReadOnlyBlocked(source core.SourceConfig, capability string) bool {
 	if !source.ReadOnly {
 		return false
@@ -1401,13 +1374,6 @@ func securitySourceCapabilitySeverity(kind, capability string) string {
 		return "high"
 	}
 	return "medium"
-}
-
-func securitySourceCapabilityReason(kind, capability string) string {
-	if def, ok := sourcecap.Lookup(kind, capability); ok {
-		return def.Reason
-	}
-	return "Source capabilities control authenticated user access to this source surface."
 }
 
 func securitySourceCapabilityRecommendation(sourceName string, def sourcecap.Definition) string {
@@ -1679,7 +1645,7 @@ func securitySourceCapabilityOrFallback(conf *Config, kind, capability string, f
 	if value, explicit := conf.featureCapabilityConfigured(kind, capability); explicit {
 		return value
 	}
-	if conf.Core.IsSourcesUsed() {
+	if conf.IsSourcesUsed() {
 		return conf.effectiveFeatureCapability(kind, capability)
 	}
 	return fallback
@@ -1700,26 +1666,6 @@ func securitySystemReadAllowed(conf *Config, table, mode, role string, sourceEna
 	return sourceEnabled && systemRootAllowed(conf, table, systemActionRead, role)
 }
 
-func defaultSystemReadAllowed(mode, role, table string) bool {
-	if role != "user" {
-		return false
-	}
-	switch strings.ToLower(strings.TrimSpace(table)) {
-	case "gj_catalog":
-		return featureCapabilityDefault(mode, featurecap.KindSystem, featurecap.KeyCatalogRead)
-	case "gj_security":
-		return featureCapabilityDefault(mode, featurecap.KindSystem, featurecap.KeySecurityRead)
-	case "gj_config":
-		return featureCapabilityDefault(mode, featurecap.KindSystem, featurecap.KeyConfigRead)
-	case "gj_runtime":
-		return featureCapabilityDefault(mode, featurecap.KindSystem, featurecap.KeyRuntimeRead)
-	case "gj_workflow":
-		return featureCapabilityDefault(mode, featurecap.KindWorkflows, featurecap.KeyWorkflowRead)
-	default:
-		return false
-	}
-}
-
 func securityWorkflowExecutionInsertAllowed(conf *Config, mode, role string, workflowsEnabled, tableReadOnly bool) bool {
 	if !workflowsEnabled || tableReadOnly || conf == nil {
 		return false
@@ -1737,7 +1683,7 @@ func securityRoleTable(conf *Config, role, table string) (core.RoleTable, bool) 
 		return core.RoleTable{}, false
 	}
 	database := securitySystemDatabase(conf)
-	for _, r := range conf.Core.Roles {
+	for _, r := range conf.Roles {
 		if !strings.EqualFold(r.Name, role) {
 			continue
 		}
@@ -1794,7 +1740,7 @@ func confAllowedOrigins(conf *Config) []string {
 	if conf == nil {
 		return nil
 	}
-	return conf.Serv.AllowedOrigins
+	return conf.AllowedOrigins
 }
 
 func securityHasWildcard(values []string) bool {
@@ -1810,11 +1756,11 @@ func securityConfiguredDatabaseSummary(conf *Config) string {
 	if conf == nil {
 		return "none"
 	}
-	if conf.Core.IsSourcesUsed() {
-		return fmt.Sprintf("%d sources", len(conf.Core.Sources))
+	if conf.IsSourcesUsed() {
+		return fmt.Sprintf("%d sources", len(conf.Sources))
 	}
-	if len(conf.Core.Databases) != 0 {
-		return fmt.Sprintf("%d databases", len(conf.Core.Databases))
+	if len(conf.Databases) != 0 {
+		return fmt.Sprintf("%d databases", len(conf.Databases))
 	}
 	if conf.DBType != "" || conf.DB.Type != "" {
 		return "legacy database"

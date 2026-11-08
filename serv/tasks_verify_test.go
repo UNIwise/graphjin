@@ -244,7 +244,7 @@ func TestTaskVerificationClaimIsSingleWinnerAcrossReplicas(t *testing.T) {
 		}
 	}
 	configure := func(conf *Config) {
-		conf.Core.Tasks = core.TasksConfig{Enabled: true, MaxPerOwner: 5, MaxEntriesPerTask: 20, EntryRetentionHours: 168, SnapshotMaxBytes: 32768}
+		conf.Tasks = core.TasksConfig{Enabled: true, MaxPerOwner: 5, MaxEntriesPerTask: 20, EntryRetentionHours: 168, SnapshotMaxBytes: 32768}
 	}
 	_, first := newSQLiteWatchServiceWithDBAndOptions(t, db1, dsn, 10, configure)
 	if err := first.initArtifactsBeforeCore(); err != nil {

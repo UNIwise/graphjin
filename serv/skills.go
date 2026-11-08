@@ -31,7 +31,7 @@ var errSkillNotFound = errors.New("skill_not_found")
 
 // Skills are a lead feature: only the lead reads them.
 func (s *graphjinService) skillsEnabled() bool {
-	return s != nil && s.conf != nil && s.conf.Core.Artifacts.Enabled && s.conf.Agent.Lead.Enabled
+	return s != nil && s.conf != nil && s.conf.Artifacts.Enabled && s.conf.Agent.Lead.Enabled
 }
 
 func (h artifactControlPlane) upsertSkill(ctx context.Context, root core.ManagedMutationRoot, existing map[string]any) (map[string]any, error) {

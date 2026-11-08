@@ -193,7 +193,7 @@ paths:
 
 func TestSyncConfigToViper_PersistsLoadableSourceTables(t *testing.T) {
 	ms := newSourceModeConfigMCPServer(t, map[string]string{"main": createSQLiteDBFile(t, "main.sqlite3", true)})
-	ms.service.conf.Core.Tables = []core.Table{{Name: "users", Source: "main"}}
+	ms.service.conf.Tables = []core.Table{{Name: "users", Source: "main"}}
 	out := applySourceModeConfigUpdate(t, ms, map[string]any{"update_sources": []any{map[string]any{
 		"name": "logs", "kind": sourcecap.KindDatabase, "type": "sqlite", "path": createSQLiteDBFile(t, "logs.sqlite3", true),
 	}}})
@@ -211,7 +211,7 @@ func TestSyncConfigToViper_PersistsLoadableSourceTables(t *testing.T) {
 	if err := json.Unmarshal(data, &tables); err != nil {
 		t.Fatal(err)
 	}
-	reloaded := core.Config{Sources: ms.service.conf.Core.Sources, Tables: tables}
+	reloaded := core.Config{Sources: ms.service.conf.Sources, Tables: tables}
 	if err := reloaded.ValidateIsSourcesUsed(); err != nil {
 		t.Fatalf("persisted tables fail validation on the next start: %v", err)
 	}

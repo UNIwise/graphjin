@@ -65,7 +65,7 @@ func InspectStore(conf *Config) (StoreStatus, error) {
 }
 
 func newStoreAdminService(conf *Config) (*graphjinService, error) {
-	if conf == nil || !conf.Core.Artifacts.Enabled {
+	if conf == nil || !conf.Artifacts.Enabled {
 		return nil, errStoreDisabled
 	}
 	if err := normalizeConfigMode(conf); err != nil {
@@ -120,7 +120,7 @@ func (s *graphjinService) storeStatus(ctx context.Context) (StoreStatus, error) 
 	if !ok {
 		return StoreStatus{}, errStoreDisabled
 	}
-	cfg := s.conf.Core.EffectiveArtifactsConfig()
+	cfg := s.conf.EffectiveArtifactsConfig()
 	st := StoreStatus{
 		Source:  cfg.Source,
 		Type:    dbType,

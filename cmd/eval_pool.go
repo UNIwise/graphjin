@@ -87,7 +87,7 @@ func newEvalInstancePool(ctx context.Context, envFor func(worker int) evalEnviro
 		}
 		if environment.StatusOut != nil {
 			if summary := timer.summary(); summary != "" {
-				fmt.Fprintf(environment.StatusOut, "boot worker=%d ready in %dms — %s\n",
+				_, _ = fmt.Fprintf(environment.StatusOut, "boot worker=%d ready in %dms — %s\n",
 					worker, timer.totalMS(), summary)
 			}
 		}

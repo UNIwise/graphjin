@@ -14,13 +14,13 @@ func (ti *DBTable) String() string {
 func (col DBColumn) String() string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("%s.%s.%s", col.Schema, col.Table, col.Name))
-	sb.WriteString(fmt.Sprintf(" [id:%d, type:%v, array:%t, notNull:%t, fulltext:%t]",
-		col.ID, col.Type, col.Array, col.NotNull, col.FullText))
+	fmt.Fprintf(&sb, "%s.%s.%s", col.Schema, col.Table, col.Name)
+	fmt.Fprintf(&sb, " [id:%d, type:%v, array:%t, notNull:%t, fulltext:%t]",
+		col.ID, col.Type, col.Array, col.NotNull, col.FullText)
 
 	if col.FKeyCol != "" {
-		sb.WriteString(fmt.Sprintf(" -> %s.%s.%s",
-			col.FKeySchema, col.FKeyTable, col.FKeyCol))
+		fmt.Fprintf(&sb, " -> %s.%s.%s",
+			col.FKeySchema, col.FKeyTable, col.FKeyCol)
 	}
 	return sb.String()
 }
@@ -29,14 +29,14 @@ func (col DBColumn) String() string {
 func (fn DBFunction) String() string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("%s.%s", fn.Schema, fn.Name))
-	sb.WriteString(fmt.Sprintf(" [type:%v, agg:%t] (", fn.Type, fn.Agg))
+	fmt.Fprintf(&sb, "%s.%s", fn.Schema, fn.Name)
+	fmt.Fprintf(&sb, " [type:%v, agg:%t] (", fn.Type, fn.Agg)
 
 	for _, v := range fn.Inputs {
 		if v.Name == "" {
-			sb.WriteString(fmt.Sprintf("%d: %v [array:%t]", v.ID, v.Type, v.Array))
+			fmt.Fprintf(&sb, "%d: %v [array:%t]", v.ID, v.Type, v.Array)
 		} else {
-			sb.WriteString(fmt.Sprintf("%s: %v [array:%t]", v.Name, v.Type, v.Array))
+			fmt.Fprintf(&sb, "%s: %v [array:%t]", v.Name, v.Type, v.Array)
 		}
 	}
 
@@ -44,9 +44,9 @@ func (fn DBFunction) String() string {
 
 	for _, v := range fn.Outputs {
 		if v.Name == "" {
-			sb.WriteString(fmt.Sprintf("%d: %v [array:%t]", v.ID, v.Type, v.Array))
+			fmt.Fprintf(&sb, "%d: %v [array:%t]", v.ID, v.Type, v.Array)
 		} else {
-			sb.WriteString(fmt.Sprintf("%s: %v [array:%t]", v.Name, v.Type, v.Array))
+			fmt.Fprintf(&sb, "%s: %v [array:%t]", v.Name, v.Type, v.Array)
 		}
 	}
 

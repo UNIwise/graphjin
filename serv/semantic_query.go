@@ -76,11 +76,6 @@ func (s *graphjinService) queryCatalogDetailed(ctx context.Context, snapshot *co
 	return result, metadata, err
 }
 
-func (i *semanticCatalogIndex) hints(ctx context.Context, snapshot *core.CatalogSnapshot, query core.CatalogQuery) ([]core.CatalogCandidateHint, error) {
-	result, err := i.hintsDetailed(ctx, snapshot, query)
-	return result.hints, err
-}
-
 func (i *semanticCatalogIndex) hintsDetailed(ctx context.Context, snapshot *core.CatalogSnapshot, query core.CatalogQuery) (semanticHintSet, error) {
 	index := i.current()
 	if index == nil || index.manifest.ActualDimension <= 0 {
@@ -183,14 +178,15 @@ func (i *semanticCatalogIndex) hintsForVector(ctx context.Context, snapshot *cor
 	for _, item := range qualified {
 		targets := item.doc.TargetCardIDs
 		source := "semantic table recall"
-		if item.doc.Kind == "column_facet" {
+		switch item.doc.Kind {
+		case "column_facet":
 			source = "semantic facet recall"
 			if strings.EqualFold(strings.TrimSpace(query.Kind), "column") || semanticWhereKind(query.Where, "column") {
 				targets = semanticRankColumns(query.Search, item.doc.MemberColumns, cardByID)
 			}
-		} else if item.doc.Kind == "concept" {
+		case "concept":
 			source = "semantic concept recall"
-		} else if item.doc.Kind == artifactKindAnnotation {
+		case artifactKindAnnotation:
 			source = "approved organizational annotation recall"
 		}
 		for _, cardID := range targets {

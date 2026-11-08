@@ -190,12 +190,12 @@ type redshiftSubscriptionWrapContext struct {
 	bytes.Buffer
 }
 
-func (c *redshiftSubscriptionWrapContext) Write(s string) (int, error) {
-	return c.Buffer.WriteString(s)
+func (c *redshiftSubscriptionWrapContext) Write(s string) {
+	c.Buffer.WriteString(s)
 }
 
-func (c *redshiftSubscriptionWrapContext) WriteString(s string) (int, error) {
-	return c.Buffer.WriteString(s)
+func (c *redshiftSubscriptionWrapContext) WriteString(s string) {
+	c.Buffer.WriteString(s)
 }
 
 func (c *redshiftSubscriptionWrapContext) AddParam(dialect.Param) string {

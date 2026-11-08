@@ -205,7 +205,7 @@ func evalReportsConfigured(conf *Config) bool {
 	if conf == nil || conf.Serv.Production || effectiveMode(conf) == modeProd {
 		return false
 	}
-	return !strings.EqualFold(strings.TrimSpace(conf.Serv.EvalStateDir), "off")
+	return !strings.EqualFold(strings.TrimSpace(conf.EvalStateDir), "off")
 }
 
 func evalReportsDirectoryAvailable(conf *Config) bool {
@@ -223,7 +223,7 @@ func evalReportsDirectoryAvailable(conf *Config) bool {
 func resolveEvalReportsStateDir(conf *Config) (string, error) {
 	configured := ""
 	if conf != nil {
-		configured = strings.TrimSpace(conf.Serv.EvalStateDir)
+		configured = strings.TrimSpace(conf.EvalStateDir)
 	}
 	base := securityConfigPath(conf)
 	path := configured

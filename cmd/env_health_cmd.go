@@ -45,14 +45,14 @@ func envHealthCmd() *cobra.Command {
 				return err
 			}
 			if asJSON {
-				fmt.Fprintln(cmd.OutOrStdout(), strings.TrimSpace(string(body)))
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), strings.TrimSpace(string(body)))
 				return nil
 			}
 			var health envHealthResponse
 			if err := json.Unmarshal(body, &health); err != nil {
 				return fmt.Errorf("%s did not answer with an environment health document: %w", url, err)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "ready — %d worlds, %d tasks, suite %s, reward %s\n",
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "ready — %d worlds, %d tasks, suite %s, reward %s\n",
 				health.Workers, health.Tasks, health.Suite.Version, health.RewardVersion)
 			return nil
 		},

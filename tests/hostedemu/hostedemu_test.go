@@ -23,7 +23,7 @@ func TestCaptureDuckDBEvents(t *testing.T) {
 		Backend:    BackendDuckDB,
 		Fallback:   FallbackStrict,
 	}, fakeAdapter{}))
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if _, err := db.ExecContext(context.Background(), "INSERT INTO items VALUES (?)", int64(1)); err != nil {
 		t.Fatal(err)
@@ -32,7 +32,7 @@ func TestCaptureDuckDBEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	data, err := os.ReadFile(filepath.Join(dir, "core_capture.jsonl"))
 	if err != nil {
@@ -70,7 +70,7 @@ func TestPlaceholderFallbackRecordsExecutionError(t *testing.T) {
 		Backend:    BackendDuckDB,
 		Fallback:   FallbackPlaceholderOnError,
 	}, fakeAdapter{}))
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	var value int64
 	if err := db.QueryRowContext(context.Background(), "SELECT id FROM missing").Scan(&value); err != nil {
@@ -103,7 +103,7 @@ func TestStrictModeReturnsExecutionError(t *testing.T) {
 		Backend:  BackendDuckDB,
 		Fallback: FallbackStrict,
 	}, fakeAdapter{}))
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if _, err := db.QueryContext(context.Background(), "SELECT id FROM missing"); err == nil {
 		t.Fatal("strict mode query unexpectedly succeeded")

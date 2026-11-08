@@ -49,7 +49,7 @@ func TestTranslateSetupCreatesExecutableDuckDBSeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	for _, stmt := range stmts {
 		if _, err := db.Exec(stmt); err != nil {
 			t.Fatalf("%v\nSQL: %s", err, stmt)

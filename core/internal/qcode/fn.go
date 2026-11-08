@@ -216,10 +216,7 @@ func exprContainsAgg(ex *Exp) bool {
 			return true
 		}
 	}
-	if exprContainsAgg(ex.Else) {
-		return true
-	}
-	return false
+	return exprContainsAgg(ex.Else)
 }
 
 // findArg returns the named argument from a graph.Field's args, if present.

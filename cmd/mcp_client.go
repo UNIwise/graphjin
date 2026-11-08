@@ -169,7 +169,7 @@ func callTool(ctx context.Context, cmd *cobra.Command, toolName string, args map
 	if err != nil {
 		return nil, fmt.Errorf("http request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -308,7 +308,7 @@ func writeTable(w io.Writer, payload json.RawMessage) (bool, error) {
 		return false, nil
 	}
 	if len(rows) == 0 {
-		fmt.Fprintln(w, "(empty)")
+		_, _ = fmt.Fprintln(w, "(empty)")
 		return true, nil
 	}
 
@@ -355,26 +355,26 @@ func writeTable(w io.Writer, payload json.RawMessage) (bool, error) {
 	// Header
 	for i, c := range cols {
 		if i > 0 {
-			fmt.Fprint(w, "  ")
+			_, _ = fmt.Fprint(w, "  ")
 		}
-		fmt.Fprintf(w, "%-*s", widths[i], c)
+		_, _ = fmt.Fprintf(w, "%-*s", widths[i], c)
 	}
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w)
 	for i := range cols {
 		if i > 0 {
-			fmt.Fprint(w, "  ")
+			_, _ = fmt.Fprint(w, "  ")
 		}
-		fmt.Fprint(w, strings.Repeat("-", widths[i]))
+		_, _ = fmt.Fprint(w, strings.Repeat("-", widths[i]))
 	}
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w)
 	for _, row := range cells {
 		for i, v := range row {
 			if i > 0 {
-				fmt.Fprint(w, "  ")
+				_, _ = fmt.Fprint(w, "  ")
 			}
-			fmt.Fprintf(w, "%-*s", widths[i], v)
+			_, _ = fmt.Fprintf(w, "%-*s", widths[i], v)
 		}
-		fmt.Fprintln(w)
+		_, _ = fmt.Fprintln(w)
 	}
 	return true, nil
 }

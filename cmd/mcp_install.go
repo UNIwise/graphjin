@@ -387,14 +387,14 @@ func normalizeMCPAddURL(input string) (string, error) {
 	u.RawQuery = ""
 	u.Fragment = ""
 	path := strings.TrimRight(u.EscapedPath(), "/")
-	switch {
-	case path == "":
+	switch path {
+	case "":
 		u.Path = routeMCPPath
-	case path == "/api/v1":
+	case "/api/v1":
 		u.Path = routeMCPPath
-	case path == routeMCPMessagePath:
+	case routeMCPMessagePath:
 		u.Path = routeMCPPath
-	case path == routeMCPPath:
+	case routeMCPPath:
 		u.Path = routeMCPPath
 	default:
 		u.Path = path
@@ -439,7 +439,7 @@ func probeMCPServer(ctx context.Context, mcpURL, baseServer string) (mcpProbeRes
 	if err != nil {
 		return mcpProbeResult{}, fmt.Errorf("could not reach %s: %w\nstart GraphJin and re-run `graphjin mcp add`, or pass the hosted server URL", mcpURL, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
@@ -512,12 +512,12 @@ func completeMCPDeviceLogin(ctx context.Context, cmd *cobra.Command, opts *mcpIn
 		completeURL = ds.VerificationURI
 	}
 	out := cmd.OutOrStdout()
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "GraphJin requires sign-in for this MCP endpoint.")
-	fmt.Fprintln(out, "Open this URL in your browser and confirm the code below:")
-	fmt.Fprintf(out, "  URL:  %s\n", completeURL)
-	fmt.Fprintf(out, "  Code: %s\n", ds.UserCode)
-	fmt.Fprintln(out)
+	_, _ = fmt.Fprintln(out)
+	_, _ = fmt.Fprintln(out, "GraphJin requires sign-in for this MCP endpoint.")
+	_, _ = fmt.Fprintln(out, "Open this URL in your browser and confirm the code below:")
+	_, _ = fmt.Fprintf(out, "  URL:  %s\n", completeURL)
+	_, _ = fmt.Fprintf(out, "  Code: %s\n", ds.UserCode)
+	_, _ = fmt.Fprintln(out)
 
 	if !opts.NoBrowser {
 		_ = tryOpenBrowser(completeURL)
@@ -556,9 +556,9 @@ func completeMCPDeviceLogin(ctx context.Context, cmd *cobra.Command, opts *mcpIn
 			return fmt.Errorf("save client config: %w", err)
 		}
 		if tr.Email != "" {
-			fmt.Fprintf(out, "Signed in as %s\n", tr.Email)
+			_, _ = fmt.Fprintf(out, "Signed in as %s\n", tr.Email)
 		}
-		fmt.Fprintf(out, "Saved %s for token refresh.\n", mustPath())
+		_, _ = fmt.Fprintf(out, "Saved %s for token refresh.\n", mustPath())
 		return nil
 	}
 }
@@ -590,7 +590,7 @@ func normalizeInstallScope(v string) (string, error) {
 func validateInstallPrereqs(opts mcpInstallOptions) error {
 	if usesClaude(opts.Client) {
 		if _, err := lookPathFn("claude"); err != nil {
-			return errors.New("Claude CLI not found in PATH. Install Claude Code CLI or use --client codex")
+			return errors.New("claude CLI not found in PATH. Install Claude Code CLI or use --client codex")
 		}
 	}
 
@@ -840,36 +840,36 @@ func usesCodex(client string) bool {
 }
 
 func printInstallPreview(w io.Writer, opts mcpInstallOptions) {
-	fmt.Fprintf(w, "Install target: %s\n", opts.Client)
-	fmt.Fprintf(w, "Scope: %s\n", opts.Scope)
-	fmt.Fprintf(w, "Server: %s\n\n", opts.Server)
+	_, _ = fmt.Fprintf(w, "Install target: %s\n", opts.Client)
+	_, _ = fmt.Fprintf(w, "Scope: %s\n", opts.Scope)
+	_, _ = fmt.Fprintf(w, "Server: %s\n\n", opts.Server)
 	if opts.Mode == mcpInstallModeProxy {
-		fmt.Fprintf(w, "Mode: local GraphJin proxy (legacy auth_login token)\n\n")
+		_, _ = fmt.Fprintf(w, "Mode: local GraphJin proxy (legacy auth_login token)\n\n")
 	} else {
-		fmt.Fprintf(w, "Mode: native MCP URL\n\n")
+		_, _ = fmt.Fprintf(w, "Mode: native MCP URL\n\n")
 	}
 }
 
 func printPostInstallGuide(w io.Writer, opts mcpInstallOptions, codexPlan codexInstallPlan) {
-	fmt.Fprintf(w, "GraphJin MCP connection added.\n")
-	fmt.Fprintf(w, "Server: %s\n", opts.Server)
+	_, _ = fmt.Fprintf(w, "GraphJin MCP connection added.\n")
+	_, _ = fmt.Fprintf(w, "Server: %s\n", opts.Server)
 
 	if usesClaude(opts.Client) {
-		fmt.Fprintf(w, "\nClaude Desktop / Claude Code\n")
-		fmt.Fprintf(w, "  1) Restart Claude Desktop.\n")
-		fmt.Fprintf(w, "  2) Verify with: claude mcp list\n")
+		_, _ = fmt.Fprintf(w, "\nClaude Desktop / Claude Code\n")
+		_, _ = fmt.Fprintf(w, "  1) Restart Claude Desktop.\n")
+		_, _ = fmt.Fprintf(w, "  2) Verify with: claude mcp list\n")
 	}
 
 	if usesCodex(opts.Client) {
-		fmt.Fprintf(w, "\nOpenAI Codex\n")
-		fmt.Fprintf(w, "  1) Start a new Codex session.\n")
-		fmt.Fprintf(w, "  2) Verify with: codex mcp list\n")
+		_, _ = fmt.Fprintf(w, "\nOpenAI Codex\n")
+		_, _ = fmt.Fprintf(w, "  1) Start a new Codex session.\n")
+		_, _ = fmt.Fprintf(w, "  2) Verify with: codex mcp list\n")
 		if !codexPlan.UseCLI {
-			fmt.Fprintf(w, "  3) Config written to: %s\n", codexPlan.ConfigPath)
+			_, _ = fmt.Fprintf(w, "  3) Config written to: %s\n", codexPlan.ConfigPath)
 		}
 	}
 
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w)
 }
 
 type evalSkillInstallResult struct {
@@ -949,16 +949,16 @@ func printEvalSkillInstallResults(w io.Writer, results []evalSkillInstallResult)
 	if len(results) == 0 {
 		return
 	}
-	fmt.Fprintln(w, "GraphJin Eval skill")
+	_, _ = fmt.Fprintln(w, "GraphJin Eval skill")
 	for _, result := range results {
 		if result.Installed {
-			fmt.Fprintf(w, "  %s: installed %s\n", result.Client, result.Path)
+			_, _ = fmt.Fprintf(w, "  %s: installed %s\n", result.Client, result.Path)
 		} else {
-			fmt.Fprintf(w, "  %s: MCP install succeeded; skill install unavailable (%v)\n", result.Client, result.Err)
-			fmt.Fprintf(w, "  bundled skill: %s\n", result.Path)
+			_, _ = fmt.Fprintf(w, "  %s: MCP install succeeded; skill install unavailable (%v)\n", result.Client, result.Err)
+			_, _ = fmt.Fprintf(w, "  bundled skill: %s\n", result.Path)
 		}
 	}
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w)
 }
 
 func runExternalCommand(cmd *cobra.Command, name string, args ...string) error {
@@ -1011,15 +1011,15 @@ func promptChoice(pio *promptIO, prompt string, options []string, defaultValue s
 	}
 
 	for {
-		fmt.Fprintf(pio.out, "%s\n", prompt)
+		_, _ = fmt.Fprintf(pio.out, "%s\n", prompt)
 		for i, option := range options {
 			marker := " "
 			if i == defaultIndex {
 				marker = "*"
 			}
-			fmt.Fprintf(pio.out, "  %d) [%s] %s\n", i+1, marker, option)
+			_, _ = fmt.Fprintf(pio.out, "  %d) [%s] %s\n", i+1, marker, option)
 		}
-		fmt.Fprintf(pio.out, "Select option (default %d): ", defaultIndex+1)
+		_, _ = fmt.Fprintf(pio.out, "Select option (default %d): ", defaultIndex+1)
 
 		line, err := pio.in.ReadString('\n')
 		if err != nil {
@@ -1042,7 +1042,7 @@ func promptChoice(pio *promptIO, prompt string, options []string, defaultValue s
 			}
 		}
 
-		fmt.Fprintln(pio.out, "Invalid selection, try again.")
+		_, _ = fmt.Fprintln(pio.out, "Invalid selection, try again.")
 	}
 }
 
@@ -1052,7 +1052,7 @@ func promptConfirm(pio *promptIO, prompt string, defaultYes bool) (bool, error) 
 		defaultLabel = "Y/n"
 	}
 
-	fmt.Fprintf(pio.out, "%s [%s]: ", prompt, defaultLabel)
+	_, _ = fmt.Fprintf(pio.out, "%s [%s]: ", prompt, defaultLabel)
 	line, err := pio.in.ReadString('\n')
 	if err != nil {
 		return false, err

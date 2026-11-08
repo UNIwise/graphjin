@@ -53,7 +53,7 @@ func (c *routingClient) clientFor(stage string) ax.AIClient {
 		return c.support
 	case gjagent.StageUnknown:
 		if count := c.unknown.Add(1); c.log != nil && count <= 3 {
-			fmt.Fprintf(c.log,
+			_, _ = fmt.Fprintf(c.log,
 				"eval: a model call could not be placed in the pipeline and was served by the policy (%d so far)\n", count)
 		}
 	}

@@ -633,7 +633,7 @@ func executeAgentResultFromCore(res *core.Result, err error) ExecuteResult {
 }
 
 func (r *serviceAgentRuntime) requireCatalogAccess(ctx context.Context) error {
-	if r == nil || r.service == nil || r.service.conf == nil || !r.service.conf.Core.IsSourcesUsed() {
+	if r == nil || r.service == nil || r.service.conf == nil || !r.service.conf.IsSourcesUsed() {
 		return nil
 	}
 	if r.service.sourceModeRootAccessAllowed("gj_catalog", runtimeRoleClass(ctx)) {

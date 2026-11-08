@@ -215,12 +215,6 @@ func unescapeStringValue(value []byte) []byte {
 	return out
 }
 
-// emitL passes an item back to the client and lowercases the value.
-func (l *lexer) emitL(t MType) {
-	lowercase(l.current())
-	l.emit(t)
-}
-
 // ignore skips over the pending input before this point.
 func (l *lexer) ignore() {
 	l.start = l.pos

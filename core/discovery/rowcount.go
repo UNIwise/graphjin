@@ -102,7 +102,7 @@ func snowflakeShowTableRows(ctx context.Context, db *sql.DB) (map[string]int64, 
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if _, err := conn.ExecContext(ctx, "SHOW TABLES"); err != nil {
 		return nil, err
@@ -118,7 +118,7 @@ WHERE "rows" IS NOT NULL`
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make(map[string]int64)
 	for rows.Next() {
@@ -366,7 +366,7 @@ func scanRowCountPairs(ctx context.Context, db *sql.DB, q string, args ...any) (
 	if err != nil {
 		return out, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var (
 			name sql.NullString

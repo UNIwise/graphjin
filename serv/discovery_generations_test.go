@@ -95,7 +95,7 @@ func TestDiscoveryRedisScopeChangesWithSchemaFingerprint(t *testing.T) {
 	}
 	confB := *confA
 	confB.Core = confA.Core
-	confB.Core.Blocklist = []string{"internal_*"}
+	confB.Blocklist = []string{"internal_*"}
 
 	managerA, err := newDiscoveryGenerationManager(&graphjinService{conf: confA, fs: fs})
 	if err != nil {

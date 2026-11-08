@@ -82,7 +82,7 @@ func newAxHTTPClient(t *testing.T, endpoint, userID string) (*ax.AxMCPClient, *a
 
 func TestMCPModernAxDiscoveryAndCacheMetadata(t *testing.T) {
 	ms := mockMcpServerWithConfig(MCPConfig{})
-	ms.service.conf.Core.Watches.Enabled = false
+	ms.service.conf.Watches.Enabled = false
 	ms = ms.service.newMCPServerWithContext(context.Background())
 	recorder := &mcpRequestRecorder{next: compatserver.NewDualStreamableHTTPServer(ms.srv)}
 	httpServer := httptest.NewServer(recorder)
@@ -150,7 +150,7 @@ func TestMCPModernAxDiscoveryAndCacheMetadata(t *testing.T) {
 
 func TestMCPLegacyInitializeSessionAndSamplingRemoval(t *testing.T) {
 	ms := mockMcpServerWithConfig(MCPConfig{})
-	ms.service.conf.Core.Watches.Enabled = false
+	ms.service.conf.Watches.Enabled = false
 	ms = ms.service.newMCPServerWithContext(context.Background())
 	httpServer := httptest.NewServer(compatserver.NewDualStreamableHTTPServer(ms.srv))
 	t.Cleanup(httpServer.Close)
@@ -163,7 +163,7 @@ func TestMCPLegacyInitializeSessionAndSamplingRemoval(t *testing.T) {
 	if err != nil {
 		t.Fatalf("legacy initialize: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("legacy initialize status=%d body=%s", resp.StatusCode, body)
@@ -214,7 +214,7 @@ func TestMCPLegacyInitializeSessionAndSamplingRemoval(t *testing.T) {
 	if err != nil {
 		t.Fatalf("legacy sampling request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ = io.ReadAll(resp.Body)
 	if !bytes.Contains(body, []byte(`"code":-32601`)) {
 		t.Fatalf("sampling request did not return method-not-found: %s", body)
@@ -298,7 +298,7 @@ func TestMCPModernMultiRoundTripResult(t *testing.T) {
 	if err != nil {
 		t.Fatalf("modern MRTR request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	data, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("modern MRTR status=%d body=%s", resp.StatusCode, data)
@@ -331,7 +331,7 @@ func TestMCPModernMultiRoundTripResult(t *testing.T) {
 
 func TestMCPModernRequiresHeadersAndPerRequestMetadata(t *testing.T) {
 	ms := mockMcpServerWithConfig(MCPConfig{})
-	ms.service.conf.Core.Watches.Enabled = false
+	ms.service.conf.Watches.Enabled = false
 	ms = ms.service.newMCPServerWithContext(context.Background())
 	httpServer := httptest.NewServer(compatserver.NewDualStreamableHTTPServer(ms.srv))
 	t.Cleanup(httpServer.Close)

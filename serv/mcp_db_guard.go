@@ -64,7 +64,7 @@ func isSystemDatabase(dbType, dbName string) bool {
 	if len(sysDBs) == 0 {
 		return false
 	}
-	normalized := dbName
+	var normalized string
 	if strings.ToLower(dbType) == "oracle" {
 		normalized = strings.ToUpper(dbName)
 	} else {
@@ -82,7 +82,7 @@ func filterSystemDatabases(dbType string, names []string) []string {
 	isOracle := strings.ToLower(dbType) == "oracle"
 	var filtered []string
 	for _, n := range names {
-		key := n
+		var key string
 		if isOracle {
 			key = strings.ToUpper(n)
 		} else {
@@ -246,7 +246,7 @@ func testDatabaseConnection(dbType, host string, port int, user, password, dbNam
 		if err != nil {
 			return nil, err
 		}
-		defer sqlDB.Close()
+		defer func() { _ = sqlDB.Close() }()
 
 		names, _ := listDatabaseNames(sqlDB, dbType)
 		return names, nil
@@ -273,7 +273,7 @@ func testDatabaseConnection(dbType, host string, port int, user, password, dbNam
 	if err != nil {
 		return nil, err
 	}
-	defer sqlDB.Close()
+	defer func() { _ = sqlDB.Close() }()
 
 	names, _ := listDatabaseNames(sqlDB, dbType)
 	return names, nil

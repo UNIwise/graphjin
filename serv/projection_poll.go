@@ -7,7 +7,7 @@ import (
 )
 
 func (s *graphjinService) startProjectionPoller(parent context.Context) {
-	if s == nil || s.conf == nil || s.systemNanoDB == nil || !s.conf.Core.Artifacts.Enabled {
+	if s == nil || s.conf == nil || s.systemNanoDB == nil || !s.conf.Artifacts.Enabled {
 		return
 	}
 	intervalSeconds := s.conf.Core.EffectiveArtifactsConfig().PollSeconds
@@ -35,10 +35,6 @@ func (s *graphjinService) startProjectionPoller(parent context.Context) {
 	if s.tasksEnabled() {
 		start("tasks", s.refreshTaskProjection)
 	}
-}
-
-func (s *graphjinService) projectionPollLoop(ctx context.Context, interval time.Duration) {
-	s.projectionPollLoopWithRecovery(ctx, interval, internalRecoveryInterval)
 }
 
 func (s *graphjinService) projectionPollLoopForDomain(ctx context.Context, interval time.Duration, domain string, refresh func() error) {

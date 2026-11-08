@@ -102,7 +102,7 @@ func (s *graphjinService) startWatchRunner(parent context.Context) {
 	if s == nil || s.conf == nil || !s.watchesEnabled() || s.gj == nil {
 		return
 	}
-	cfg := s.conf.Core.EffectiveWatchesConfig()
+	cfg := s.conf.EffectiveWatchesConfig()
 	if !strings.EqualFold(strings.TrimSpace(cfg.Runner), "all") {
 		return
 	}
@@ -1287,7 +1287,7 @@ func (s *graphjinService) pruneWatchEvents(ctx context.Context, def *watchRuntim
 	if def == nil {
 		return nil
 	}
-	cfg := s.conf.Core.EffectiveWatchesConfig()
+	cfg := s.conf.EffectiveWatchesConfig()
 	rows, err := s.internalStoreAllRows(ctx, "watch_events", `where: { watch_id: { eq: $watch_id } }`, `id watch_id created_at`, map[string]any{"watch_id": def.ID})
 	if err != nil {
 		return err

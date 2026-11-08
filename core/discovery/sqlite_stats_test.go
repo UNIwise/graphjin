@@ -14,7 +14,7 @@ func TestSQLiteDiscoveryCountsTablesInsteadOfIndexes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	db.SetMaxOpenConns(1)
 	for _, statement := range []string{
 		"CREATE TABLE orders(id INTEGER PRIMARY KEY, account_id INTEGER, state TEXT)",

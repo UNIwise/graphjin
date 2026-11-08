@@ -338,7 +338,7 @@ func renderFixMarkdown(query, errorMsg string, res *FixQueryErrorResult, analyti
 	sb.WriteString("\n```\n\n")
 
 	sb.WriteString("## Diagnosis\n")
-	sb.WriteString(fmt.Sprintf("**Kind**: `%s`\n\n", res.Kind))
+	fmt.Fprintf(&sb, "**Kind**: `%s`\n\n", res.Kind)
 	sb.WriteString(res.Diagnosis)
 	sb.WriteString("\n\n")
 
@@ -351,7 +351,7 @@ func renderFixMarkdown(query, errorMsg string, res *FixQueryErrorResult, analyti
 	if len(res.FollowUpTools) > 0 {
 		sb.WriteString("## Recommended Next Steps\n")
 		for _, t := range res.FollowUpTools {
-			sb.WriteString(fmt.Sprintf("- Call `%s`\n", t))
+			fmt.Fprintf(&sb, "- Call `%s`\n", t)
 		}
 		sb.WriteString("\n")
 	}

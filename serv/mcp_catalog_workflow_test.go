@@ -269,7 +269,7 @@ func TestCatalogCacheRevisionChangesWhenConfigChanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first catalog snapshot: %v", err)
 	}
-	s.conf.Core.DefaultBlock = !s.conf.Core.DefaultBlock
+	s.conf.DefaultBlock = !s.conf.DefaultBlock
 
 	updated, err := s.catalogSnapshot()
 	if err != nil {

@@ -315,10 +315,10 @@ func TestThreadMigrationAddsLastSeenAt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	_, svc := newSQLiteWatchServiceWithDBAndOptions(t, db, dsn, 10, func(conf *Config) {
 		conf.Agent.Enabled = true
-		conf.Core.Threads = core.ThreadsConfig{Enabled: true, HistoryTurns: 12, RunLeaseSeconds: 3, MaxPerOwner: 3}
+		conf.Threads = core.ThreadsConfig{Enabled: true, HistoryTurns: 12, RunLeaseSeconds: 3, MaxPerOwner: 3}
 		conf.Agent.Lead.Enabled = true
 	})
 	schema := svc.conf.Core.EffectiveArtifactsConfig().Schema

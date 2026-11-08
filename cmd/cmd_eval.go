@@ -193,7 +193,7 @@ func evalRemoveCmd(opts *evalCLIOptions) *cobra.Command {
 			if opts.JSON {
 				return writeEvalJSON(cmd.OutOrStdout(), map[string]any{"status": "removed", "task_id": removed.ID, "suite": path, "tasks": len(suite.Tasks)})
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Removed task %s (%s) from %s.\n", removed.ID, removed.Slug, path)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed task %s (%s) from %s.\n", removed.ID, removed.Slug, path)
 			return nil
 		},
 	}
@@ -264,13 +264,13 @@ func evalExportCmd(opts *evalCLIOptions) *cobra.Command {
 					unresolved++
 				}
 			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "Exported %d trajectories (%d steps).\n", len(trajectories), steps)
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Exported %d trajectories (%d steps).\n", len(trajectories), steps)
 			if withoutPrompts != 0 {
-				fmt.Fprintf(cmd.ErrOrStderr(),
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
 					"  %d recorded no rendered prompt: usable for inspection and reward work, not for supervised training.\n", withoutPrompts)
 			}
 			if unresolved != 0 {
-				fmt.Fprintf(cmd.ErrOrStderr(),
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
 					"  %d could not tell the model's programs from the runtime's own: training on these imitates the environment.\n", unresolved)
 			}
 			return nil
@@ -376,7 +376,7 @@ func evalAuthorCmd(opts *evalCLIOptions) *cobra.Command {
 				return &evalExitError{Code: 2, Err: err}
 			}
 			for _, path := range planted {
-				fmt.Fprintf(cmd.ErrOrStderr(), "  wrote %s\n", path)
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "  wrote %s\n", path)
 			}
 
 			// Authored tasks meet the same bar as generated ones: an oracle that
@@ -387,10 +387,10 @@ func evalAuthorCmd(opts *evalCLIOptions) *cobra.Command {
 				return &evalExitError{Code: 2, Err: err}
 			}
 			for _, rejection := range report.Rejections {
-				fmt.Fprintf(cmd.ErrOrStderr(), "  refused %s\n", rejection)
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "  refused %s\n", rejection)
 			}
 			for _, note := range report.Notes {
-				fmt.Fprintf(cmd.ErrOrStderr(), "  %s\n", note)
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "  %s\n", note)
 			}
 			if len(verified) == 0 {
 				return &evalExitError{Code: 2, Err: errors.New(
@@ -425,12 +425,12 @@ func evalAuthorCmd(opts *evalCLIOptions) *cobra.Command {
 					"proposed": len(authored), "refused": len(report.Rejections),
 				})
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Authored %d task(s) with %s; %d proposal(s) refused.\n",
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Authored %d task(s) with %s; %d proposal(s) refused.\n",
 				len(verified), label, len(report.Rejections))
 			for _, name := range sortedKeys(byFamily) {
-				fmt.Fprintf(cmd.OutOrStdout(), "  %-28s %d\n", name, byFamily[name])
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  %-28s %d\n", name, byFamily[name])
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Wrote %s; `eval create` will include these.\n", path)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Wrote %s; `eval create` will include these.\n", path)
 			return nil
 		},
 	}
@@ -549,15 +549,15 @@ func evalCreateCmd(opts *evalCLIOptions) *cobra.Command {
 					"split": splitPath,
 				})
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Created %s with %d verified tasks (seed %d).\n", path, len(suite.Tasks), suite.Generator.Seed)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Created %s with %d verified tasks (seed %d).\n", path, len(suite.Tasks), suite.Generator.Seed)
 			if len(authored) != 0 {
-				fmt.Fprintf(cmd.OutOrStdout(), "  including %d authored candidate(s) from %s\n", len(authored), authoredPath)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  including %d authored candidate(s) from %s\n", len(authored), authoredPath)
 			}
 			if splitPath != "" {
-				fmt.Fprintf(cmd.OutOrStdout(), "Wrote split manifest %s.\n", splitPath)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Wrote split manifest %s.\n", splitPath)
 			}
 			for _, name := range sortedKeys(byFamily) {
-				fmt.Fprintf(cmd.OutOrStdout(), "  %-32s %d\n", name, byFamily[name])
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  %-32s %d\n", name, byFamily[name])
 			}
 			return nil
 		},
@@ -635,11 +635,11 @@ func evalAddCmd(opts *evalCLIOptions) *cobra.Command {
 						return err
 					}
 				} else {
-					fmt.Fprintf(cmd.OutOrStdout(), "Interpretation: %s\nExecuted oracle result: %s", proposal.Interpretation, result.Value)
+					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Interpretation: %s\nExecuted oracle result: %s", proposal.Interpretation, result.Value)
 					if result.Dimension != "" {
-						fmt.Fprintf(cmd.OutOrStdout(), " (%s)", result.Dimension)
+						_, _ = fmt.Fprintf(cmd.OutOrStdout(), " (%s)", result.Dimension)
 					}
-					fmt.Fprintln(cmd.OutOrStdout())
+					_, _ = fmt.Fprintln(cmd.OutOrStdout())
 				}
 				if !opts.Yes {
 					ok, err := promptConfirm(newPromptIO(cmd.InOrStdin(), cmd.OutOrStdout()), "Save this evaluation task?", false)
@@ -662,7 +662,7 @@ func evalAddCmd(opts *evalCLIOptions) *cobra.Command {
 						return err
 					}
 				} else if !opts.JSON {
-					fmt.Fprintf(cmd.OutOrStdout(), "Saved task %s to %s.\n", task.ID, suitePath)
+					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Saved task %s to %s.\n", task.ID, suitePath)
 				}
 				return nil
 			}
@@ -698,7 +698,7 @@ func evalRunCmd(opts *evalCLIOptions, promote bool) *cobra.Command {
 					return &evalExitError{Code: 1, Err: errors.New("cannot promote a failing evaluation")}
 				}
 				if !opts.JSON {
-					fmt.Fprintln(cmd.OutOrStdout(), "Promoted this run as the baseline.")
+					_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Promoted this run as the baseline.")
 				}
 			}
 			return evalReportExit(report)
@@ -876,7 +876,7 @@ func evalRescoreCmd(opts *evalCLIOptions) *cobra.Command {
 			if opts.JSON {
 				return writeEvalJSON(cmd.OutOrStdout(), report)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Rescored %s as %s under %s with no provider traffic.\n", runID, report.RunID, report.RewardVersion)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Rescored %s as %s under %s with no provider traffic.\n", runID, report.RunID, report.RewardVersion)
 			printEvalReport(cmd, opts, &report, store)
 			return evalReportExit(&report)
 		},
@@ -964,7 +964,7 @@ func evalFreezeSuiteCmd(opts *evalCLIOptions) *cobra.Command {
 			if err := os.Chmod(output, 0o644); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Froze %d public benchmark tasks to %s (suite fingerprint %s).\n", len(suite.Tasks), output, gjeval.SuiteFingerprint(*suite))
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Froze %d public benchmark tasks to %s (suite fingerprint %s).\n", len(suite.Tasks), output, gjeval.SuiteFingerprint(*suite))
 			return nil
 		},
 	}
@@ -988,7 +988,7 @@ func evalImportCmd() *cobra.Command {
 			if err := gjeval.SaveSuite(output, suite); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Imported %d tasks to %s.\n", len(tasks), output)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Imported %d tasks to %s.\n", len(tasks), output)
 			return nil
 		},
 	}
@@ -1129,21 +1129,21 @@ func evalStatus(cmd *cobra.Command, opts *evalCLIOptions) error {
 	if opts.JSON {
 		return writeEvalJSON(cmd.OutOrStdout(), status)
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Suite: %s\n", suitePath)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Suite: %s\n", suitePath)
 	if suite == nil {
-		fmt.Fprintln(cmd.OutOrStdout(), "Status: not created (run `graphjin eval create`)")
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Status: not created (run `graphjin eval create`)")
 	} else {
-		fmt.Fprintf(cmd.OutOrStdout(), "Status: %d tasks, catalog %s\n", len(suite.Tasks), suite.CatalogFingerprint)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Status: %d tasks, catalog %s\n", len(suite.Tasks), suite.CatalogFingerprint)
 	}
 	if baseline == nil {
-		fmt.Fprintln(cmd.OutOrStdout(), "Baseline: none")
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Baseline: none")
 	} else {
-		fmt.Fprintf(cmd.OutOrStdout(), "Baseline: %s (recall %.3f)\n", baseline.RunID, baseline.Metrics.Recall)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Baseline: %s (recall %.3f)\n", baseline.RunID, baseline.Metrics.Recall)
 	}
 	for _, run := range incomplete {
-		fmt.Fprintf(cmd.OutOrStdout(), "Incomplete: %s (%s, %d/%d initial slots, model %s, updated %s)\n", run.RunID, run.Status, run.Progress.CompletedInitialSlots, run.Progress.PlannedInitialSlots, run.Provenance.Model, run.UpdatedAt.Format(time.RFC3339))
-		fmt.Fprintf(cmd.OutOrStdout(), "Resume: %s\n", run.ResumeCommand())
-		fmt.Fprintf(cmd.OutOrStdout(), "Restart: %s\n", run.RestartCommand())
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Incomplete: %s (%s, %d/%d initial slots, model %s, updated %s)\n", run.RunID, run.Status, run.Progress.CompletedInitialSlots, run.Progress.PlannedInitialSlots, run.Provenance.Model, run.UpdatedAt.Format(time.RFC3339))
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Resume: %s\n", run.ResumeCommand())
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Restart: %s\n", run.RestartCommand())
 	}
 	return nil
 }
@@ -1180,7 +1180,7 @@ func flagChanged(cmd *cobra.Command, name string) bool {
 
 func approveProviderTraffic(cmd *cobra.Command, yes bool, expected string) error {
 	out := cmd.ErrOrStderr()
-	fmt.Fprintf(out, "Provider traffic preview: %s. Actual token cost depends on the configured model.\n", expected)
+	_, _ = fmt.Fprintf(out, "Provider traffic preview: %s. Actual token cost depends on the configured model.\n", expected)
 	if yes {
 		return nil
 	}
@@ -1220,11 +1220,11 @@ func printEvalReport(cmd *cobra.Command, opts *evalCLIOptions, report *gjeval.Re
 			return
 		}
 		summary := gjeval.SummarizePartialReport(partial)
-		fmt.Fprintf(cmd.OutOrStdout(), "%s\n%s\n", summary.Title, summary.Message)
-		fmt.Fprintf(cmd.OutOrStdout(), "Test attempts: %d of %d complete.\n", summary.CompletedTestAttempts, summary.PlannedTestAttempts)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s\n%s\n", summary.Title, summary.Message)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Test attempts: %d of %d complete.\n", summary.CompletedTestAttempts, summary.PlannedTestAttempts)
 		if opts.Debug {
-			fmt.Fprintf(cmd.OutOrStdout(), "Technical: status=%s, provider attempts=%d, retries=%d.\n", report.RunStatus, report.Progress.ProviderAttempts, report.Progress.RetryCount)
-			fmt.Fprintf(cmd.OutOrStdout(), "Provider usage so far: %d tokens (%d prompt, %d completion) across %d model calls; failed attempts and retries are included.\n",
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Technical: status=%s, provider attempts=%d, retries=%d.\n", report.RunStatus, report.Progress.ProviderAttempts, report.Progress.RetryCount)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Provider usage so far: %d tokens (%d prompt, %d completion) across %d model calls; failed attempts and retries are included.\n",
 				report.ProviderUsage.TotalTokens, report.ProviderUsage.PromptTokens, report.ProviderUsage.CompletionTokens, report.ProviderUsage.LLMCalls)
 			printProviderUsageCompleteness(cmd, report.ProviderUsage)
 		}
@@ -1238,61 +1238,61 @@ func printEvalReport(cmd *cobra.Command, opts *evalCLIOptions, report *gjeval.Re
 	}
 	summary := gjeval.SummarizeReport(*report)
 	if report.Acceptance.ScoringSuspect || gjeval.IsScoringDivergenceSuspect(report.Metrics) {
-		fmt.Fprintf(cmd.OutOrStdout(), "SCORING INTEGRITY WARNING: correct-answer recall exceeds required-method recall by %.1f percentage points. Investigate the scoring contract before publishing.\n",
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "SCORING INTEGRITY WARNING: correct-answer recall exceeds required-method recall by %.1f percentage points. Investigate the scoring contract before publishing.\n",
 			100*gjeval.ScoringDivergence(report.Metrics))
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "%s\n%s\n", summary.Title, summary.Message)
-	fmt.Fprintf(cmd.OutOrStdout(), "Correct answer: %d of %d data questions. Required database method: %d of %d. Full pass: %d of %d. Safety: %d of %d. Passed every attempt: %d of %d.\n",
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s\n%s\n", summary.Title, summary.Message)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Correct answer: %d of %d data questions. Required database method: %d of %d. Full pass: %d of %d. Safety: %d of %d. Passed every attempt: %d of %d.\n",
 		summary.CorrectAnswerQuestions, summary.DataQuestionCount,
 		summary.RequiredMethodQuestions, summary.MethodQuestionCount,
 		summary.FullPassQuestions, summary.QuestionCount,
 		summary.SafetyRulesFollowed, summary.QuestionCount,
 		summary.PassedEveryAttempt, summary.QuestionCount)
-	fmt.Fprintf(cmd.OutOrStdout(), "Governance interventions: %d. Forbidden attempts: %d (all refused). Unsafe effects: %d.\n", summary.GuardInterventions, summary.ForbiddenAttempts, summary.UnsafeEffects)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Governance interventions: %d. Forbidden attempts: %d (all refused). Unsafe effects: %d.\n", summary.GuardInterventions, summary.ForbiddenAttempts, summary.UnsafeEffects)
 	// Per-family publication gates, printed for every complete run. These decide
 	// whether a public row may be published and were previously remembered rather
 	// than recorded, which cost one run's verdict to a noise-level window swing.
 	if gatesMet, unmet := gjeval.PublicationGatesMet(*report); gatesMet {
-		fmt.Fprintf(cmd.OutOrStdout(), "Publication gates: all met.\n%s", gjeval.FormatPublicationGates(*report))
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Publication gates: all met.\n%s", gjeval.FormatPublicationGates(*report))
 	} else {
-		fmt.Fprintf(cmd.OutOrStdout(), "Publication gates: NOT met (%s).\n%s", strings.Join(unmet, ", "), gjeval.FormatPublicationGates(*report))
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Publication gates: NOT met (%s).\n%s", strings.Join(unmet, ", "), gjeval.FormatPublicationGates(*report))
 	}
 	if opts.Debug {
-		fmt.Fprintf(cmd.OutOrStdout(), "Technical: recall %.3f, ground truth %.3f, method %.3f, safety %.3f.\n", report.Metrics.Recall, report.Metrics.GroundTruthRecall, report.Metrics.MethodRecall, report.Metrics.SafetyPrecision)
-		fmt.Fprintf(cmd.OutOrStdout(), "Technical: pass@%d %.3f, pass^%d %.3f; accepted=%t.\n", report.Provenance.Repeats, report.Metrics.PassAtK, report.Provenance.Repeats, report.Metrics.PassPowerK, report.Acceptance.HardPass)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Technical: recall %.3f, ground truth %.3f, method %.3f, safety %.3f.\n", report.Metrics.Recall, report.Metrics.GroundTruthRecall, report.Metrics.MethodRecall, report.Metrics.SafetyPrecision)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Technical: pass@%d %.3f, pass^%d %.3f; accepted=%t.\n", report.Provenance.Repeats, report.Metrics.PassAtK, report.Provenance.Repeats, report.Metrics.PassPowerK, report.Acceptance.HardPass)
 		perEpisode := 0.0
 		if report.Metrics.EpisodeCount != 0 {
 			perEpisode = float64(report.Metrics.TotalTokens) / float64(report.Metrics.EpisodeCount)
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "Finalized usage: %d tokens (%d prompt, %d completion) across %d model calls; %.1f tokens per episode.\n",
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Finalized usage: %d tokens (%d prompt, %d completion) across %d model calls; %.1f tokens per episode.\n",
 			report.Metrics.TotalTokens, report.Metrics.PromptTokens, report.Metrics.CompletionTokens, report.Metrics.LLMCalls, perEpisode)
-		fmt.Fprintf(cmd.OutOrStdout(), "Actual provider usage: %d tokens across %d model calls and %d provider attempts; failed attempts and retries are included.\n",
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Actual provider usage: %d tokens across %d model calls and %d provider attempts; failed attempts and retries are included.\n",
 			report.ProviderUsage.TotalTokens, report.ProviderUsage.LLMCalls, report.Progress.ProviderAttempts)
 		printProviderUsageCompleteness(cmd, report.ProviderUsage)
 		if comparison := report.UsageComparison; comparison != nil {
 			if comparison.Comparable {
-				fmt.Fprintf(cmd.OutOrStdout(), "Token change vs baseline %s: finalized %+.1f%% (%+d), per episode %+.1f%% (%+.1f), actual provider %+.1f%% (%+d).\n",
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Token change vs baseline %s: finalized %+.1f%% (%+d), per episode %+.1f%% (%+.1f), actual provider %+.1f%% (%+d).\n",
 					comparison.BaselineRunID,
 					evalPercent(comparison.FinalizedTokensChangePercent), comparison.FinalizedTokensDelta,
 					evalPercent(comparison.TokensPerEpisodeChangePercent), comparison.TokensPerEpisodeDelta,
 					evalPercent(comparison.ProviderTokensChangePercent), comparison.ProviderTokensDelta,
 				)
 			} else {
-				fmt.Fprintf(cmd.OutOrStdout(), "Token comparison vs baseline %s is advisory only: %s.\n", comparison.BaselineRunID, comparison.Reason)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Token comparison vs baseline %s is advisory only: %s.\n", comparison.BaselineRunID, comparison.Reason)
 			}
 		}
 		for _, notice := range report.Acceptance.Notices {
-			fmt.Fprintf(cmd.OutOrStdout(), "Notice: %s\n", notice)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Notice: %s\n", notice)
 		}
 		for taskID, detail := range report.InvalidOracleDetails {
-			fmt.Fprintf(cmd.OutOrStdout(), "Invalid oracle: %s (%s)\n", taskID, detail)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Invalid oracle: %s (%s)\n", taskID, detail)
 		}
 		for _, path := range report.EpisodePaths {
-			fmt.Fprintf(cmd.OutOrStdout(), "Episode: %s\n", path)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Episode: %s\n", path)
 		}
 		for _, task := range report.Tasks {
 			if !task.Pass {
-				fmt.Fprintf(cmd.OutOrStdout(), "Failure: %s (%s)\n", task.TaskID, task.FailureCategory)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Failure: %s (%s)\n", task.TaskID, task.FailureCategory)
 			}
 		}
 	}
@@ -1309,29 +1309,29 @@ func printEvalReportLocations(cmd *cobra.Command, opts *evalCLIOptions, report *
 		out = cmd.ErrOrStderr()
 	}
 	projectPath := filepath.Dir(store.Root)
-	fmt.Fprintf(out, "\nFriendly report:  %s\n", store.ReportMarkdownPath(report.RunID))
-	fmt.Fprintf(out, "Technical report: %s\n", store.ReportTechnicalMarkdownPath(report.RunID))
-	fmt.Fprintf(out, "JSON report:      %s\n", store.ReportPath(report.RunID))
+	_, _ = fmt.Fprintf(out, "\nFriendly report:  %s\n", store.ReportMarkdownPath(report.RunID))
+	_, _ = fmt.Fprintf(out, "Technical report: %s\n", store.ReportTechnicalMarkdownPath(report.RunID))
+	_, _ = fmt.Fprintf(out, "JSON report:      %s\n", store.ReportPath(report.RunID))
 	serveCommand := fmt.Sprintf("graphjin --path %s serve", strconv.Quote(projectPath))
 	if opts.Demo {
 		serveCommand += " --demo"
 	}
 	if consoleURL := evalConsoleReportURL(projectPath, opts.Demo, report.RunID); consoleURL != "" {
-		fmt.Fprintf(out, "Console:         %s (start with `%s`)\n", consoleURL, serveCommand)
+		_, _ = fmt.Fprintf(out, "Console:         %s (start with `%s`)\n", consoleURL, serveCommand)
 	} else {
-		fmt.Fprintf(out, "Console:         start `%s`, then open Trainer -> Reports\n", serveCommand)
+		_, _ = fmt.Fprintf(out, "Console:         start `%s`, then open Trainer -> Reports\n", serveCommand)
 	}
 	if report.RunStatus != "" && report.RunStatus != gjeval.RunStatusComplete {
 		if manifest, err := store.LoadManifest(report.RunID); err == nil {
-			fmt.Fprintf(out, "Resume:          %s\n", manifest.ResumeCommand())
+			_, _ = fmt.Fprintf(out, "Resume:          %s\n", manifest.ResumeCommand())
 		}
 		return
 	}
 	public := gjeval.PublicBenchmark()
 	if report.SuiteFingerprint == public.SuiteFingerprint {
-		fmt.Fprintf(out, "Publish:         graphjin --path %s eval publish %s --benchmark %s --yes\n", strconv.Quote(projectPath), report.RunID, defaultBenchmarkSlug)
+		_, _ = fmt.Fprintf(out, "Publish:         graphjin --path %s eval publish %s --benchmark %s --yes\n", strconv.Quote(projectPath), report.RunID, defaultBenchmarkSlug)
 	} else {
-		fmt.Fprintln(out, "Publish:         not a ranked public-suite run")
+		_, _ = fmt.Fprintln(out, "Publish:         not a ranked public-suite run")
 	}
 }
 
@@ -1367,10 +1367,10 @@ func evalConsoleReportURL(projectPath string, demo bool, runID string) string {
 
 func printProviderUsageCompleteness(cmd *cobra.Command, usage gjeval.ProviderUsage) {
 	if usage.Complete {
-		fmt.Fprintln(cmd.OutOrStdout(), "Provider usage accounting is complete for every attempt.")
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Provider usage accounting is complete for every attempt.")
 		return
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Provider usage accounting is incomplete: %d timeout or transport attempt(s) returned no provider usage. Recorded tokens are a lower bound.\n", usage.UnknownAttempts)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Provider usage accounting is incomplete: %d timeout or transport attempt(s) returned no provider usage. Recorded tokens are a lower bound.\n", usage.UnknownAttempts)
 }
 
 func evalPercent(value *float64) float64 {
@@ -1418,7 +1418,7 @@ func ensureEvalAgentReady(ctx context.Context, client *http.Client, instance gje
 	if err != nil {
 		return gjeval.AgentStatus{}, fmt.Errorf("read agent status: %w", err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	var status gjeval.AgentStatus
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return gjeval.AgentStatus{}, fmt.Errorf("agent status returned HTTP %d", response.StatusCode)
@@ -1567,7 +1567,7 @@ func writeEvalJSON(w io.Writer, value any) error {
 }
 
 func readEvalLine(in io.Reader, out io.Writer, prompt string) (string, error) {
-	fmt.Fprintf(out, "%s ", strings.TrimSpace(prompt))
+	_, _ = fmt.Fprintf(out, "%s ", strings.TrimSpace(prompt))
 	line, err := bufio.NewReader(in).ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", err

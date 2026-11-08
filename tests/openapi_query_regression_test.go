@@ -215,7 +215,7 @@ func TestOpenAPITimeoutReturnsHTTPPartialDataAndError(t *testing.T) {
 		_ = appDB.Close()
 		t.Fatal(err)
 	}
-	defer gjs.Close()
+	defer func() { _ = gjs.Close() }()
 
 	payload, _ := json.Marshal(map[string]any{"query": `query {
 		users(limit: 1, order_by: {id: asc}) { id email }
@@ -235,7 +235,7 @@ func TestOpenAPITimeoutReturnsHTTPPartialDataAndError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GraphQL HTTP request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)

@@ -322,7 +322,7 @@ func (f *configFieldFiller) set(t *testing.T, field reflect.Value, name string) 
 	case reflect.Float64:
 		f.n++
 		field.SetFloat(float64(f.n) / 100)
-	case reflect.Ptr:
+	case reflect.Pointer:
 		// A pointer distinguishes unset from a zero value, so this fills it
 		// with a non-nil pointer to a non-zero value: a bridge that dropped
 		// the field would hand back nil.

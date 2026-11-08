@@ -153,7 +153,7 @@ func (s *graphjinService) startWatchScheduleRunner(parent context.Context) {
 	if s == nil || s.conf == nil || !s.watchesEnabled() || s.gj == nil {
 		return
 	}
-	cfg := s.conf.Core.EffectiveWatchesConfig()
+	cfg := s.conf.EffectiveWatchesConfig()
 	if !strings.EqualFold(strings.TrimSpace(cfg.Runner), "all") {
 		return
 	}

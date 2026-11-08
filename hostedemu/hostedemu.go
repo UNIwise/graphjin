@@ -478,7 +478,7 @@ func (s *state) queryBackend(ctx context.Context, phase, query string, args []dr
 		trace.ExecutionError = err
 		return s.fallbackQuery(query, trace, err)
 	}
-	defer sqlRows.Close()
+	defer func() { _ = sqlRows.Close() }()
 	r, result, err := driverRowsFromSQLRows(sqlRows)
 	if err != nil {
 		trace.ExecutionError = err

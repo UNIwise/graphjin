@@ -23,8 +23,8 @@ func (s *graphjinService) withOpenAPIRequestHeaders(w http.ResponseWriter, r *ht
 			}
 		}
 	}
-	collect(s.conf.Core.OpenAPI)
-	for _, source := range s.conf.Core.Sources {
+	collect(s.conf.OpenAPI)
+	for _, source := range s.conf.Sources {
 		collect(source.Specs)
 	}
 	if headers == nil {

@@ -120,7 +120,7 @@ func (ms *mcpServer) callerCapabilityProfile(ctx context.Context, includeVisible
 	role := runtimeRoleClass(ctx)
 	profile := &MCPCapabilityProfile{
 		Mode:          effectiveMode(conf),
-		SourcesMode:   conf != nil && conf.Core.IsSourcesUsed(),
+		SourcesMode:   conf != nil && conf.IsSourcesUsed(),
 		RoleClass:     role,
 		Authenticated: mcpContextAuthenticated(ctx, role),
 		SafetyNotes: []string{
@@ -170,10 +170,10 @@ func mcpContextAuthenticated(ctx context.Context, role string) bool {
 
 func (ms *mcpServer) graphJinRootProfiles(ctx context.Context) ([]MCPRootProfile, []MCPRootProfile) {
 	conf := ms.config()
-	if conf == nil || !conf.Core.IsSourcesUsed() {
+	if conf == nil || !conf.IsSourcesUsed() {
 		return nil, nil
 	}
-	access := conf.Core.EffectiveSystemRootAccess()
+	access := conf.EffectiveSystemRootAccess()
 	var available []MCPRootProfile
 	var blocked []MCPRootProfile
 	for _, root := range mcpGraphJinRoots {
@@ -214,7 +214,7 @@ func (ms *mcpServer) rootVisibleForContext(ctx context.Context, root string) boo
 		}
 	}
 	conf := ms.config()
-	if conf == nil || !conf.Core.IsSourcesUsed() {
+	if conf == nil || !conf.IsSourcesUsed() {
 		return true
 	}
 	if strings.TrimSpace(root) == "" {
@@ -250,7 +250,7 @@ func mcpToolRootAction(tool string) string {
 
 func (ms *mcpServer) rootActionVisibleForContext(ctx context.Context, root, action string) bool {
 	conf := ms.config()
-	if conf == nil || !conf.Core.IsSourcesUsed() {
+	if conf == nil || !conf.IsSourcesUsed() {
 		return true
 	}
 	ctx = ms.effectiveContext(ctx)

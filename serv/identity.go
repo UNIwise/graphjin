@@ -16,7 +16,7 @@ func (s *graphjinService) observeAuthHandler(ah auth.HandlerFunc) auth.HandlerFu
 	}
 	return func(w http.ResponseWriter, r *http.Request) (context.Context, error) {
 		ctx, err := ah(w, r)
-		if err != nil && s != nil && s.conf != nil && s.conf.Core.IsSourcesUsed() && strings.EqualFold(s.conf.Auth.Type, "jwt") {
+		if err != nil && s != nil && s.conf != nil && s.conf.IsSourcesUsed() && strings.EqualFold(s.conf.Auth.Type, "jwt") {
 			code := authFailureClass(err)
 			s.recordRuntimeEvent(r.Context(), runtimeEvent{
 				Phase:      "auth",
@@ -44,10 +44,10 @@ func authFailureClass(err error) string {
 }
 
 func (s *graphjinService) applyIdentityContext(ctx context.Context) context.Context {
-	if ctx == nil || s == nil || s.conf == nil || !s.conf.Core.IsSourcesUsed() {
+	if ctx == nil || s == nil || s.conf == nil || !s.conf.IsSourcesUsed() {
 		return ctx
 	}
-	id := s.conf.Core.EffectiveIdentityConfig()
+	id := s.conf.EffectiveIdentityConfig()
 	claims := auth.UserClaims(ctx)
 	vars := identityVarsFromContext(ctx)
 
@@ -114,7 +114,7 @@ func (s *graphjinService) identityRolesContainConfiguredRole(roles []string) boo
 		return false
 	}
 	seen := make(map[string]struct{})
-	for _, role := range s.conf.Core.Roles {
+	for _, role := range s.conf.Roles {
 		if strings.TrimSpace(role.Name) != "" {
 			seen[strings.ToLower(strings.TrimSpace(role.Name))] = struct{}{}
 		}
@@ -237,7 +237,7 @@ func accessNeedsNamespace(mode string) bool {
 }
 
 func (s *graphjinService) recordGraphQLAccessFailure(ctx context.Context, err error) {
-	if err == nil || s == nil || s.conf == nil || !s.conf.Core.IsSourcesUsed() {
+	if err == nil || s == nil || s.conf == nil || !s.conf.IsSourcesUsed() {
 		return
 	}
 	reason := graphQLAccessFailureReason(err)
@@ -285,7 +285,7 @@ func (s *graphjinService) recordGraphQLAccessFailures(ctx context.Context, query
 }
 
 func (s *graphjinService) recordDeniedSourceModeRootAccess(ctx context.Context, query string) {
-	if s == nil || s.conf == nil || !s.conf.Core.IsSourcesUsed() || strings.TrimSpace(query) == "" {
+	if s == nil || s.conf == nil || !s.conf.IsSourcesUsed() || strings.TrimSpace(query) == "" {
 		return
 	}
 	for _, root := range sourceModeRootsInQuery(query) {

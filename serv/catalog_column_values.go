@@ -180,7 +180,7 @@ func sampleDistinctValues(ctx context.Context, db *sql.DB, schema, table, column
 	if err != nil {
 		return nil, false
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	values := make([]string, 0, columnValueSampleRows)
 	for rows.Next() {

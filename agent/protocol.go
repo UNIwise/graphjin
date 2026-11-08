@@ -302,7 +302,7 @@ func configWriteIntent(instruction string) bool {
 	}) {
 		words[word] = true
 	}
-	if !words["gj_config"] && !(words["graphjin"] && words["config"]) {
+	if !words["gj_config"] && (!words["graphjin"] || !words["config"]) {
 		return false
 	}
 	for _, verb := range []string{"add", "change", "configure", "delete", "disable", "edit", "enable", "modify", "remove", "set", "update"} {

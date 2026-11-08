@@ -380,16 +380,16 @@ func configureEvalInstance(config *serv.Config, spec gjeval.EnvSpec) {
 	}
 	config.WatchAndReload = false
 	if spec.Reactive {
-		config.Core.Watches.Runner = "all"
+		config.Watches.Runner = "all"
 		// Eval owns this isolated instance, so a one-second revision poll and a
 		// short subscription poll make delivery tests deterministic without
 		// weakening production defaults.
-		config.Core.Artifacts.PollSeconds = 1
+		config.Artifacts.PollSeconds = 1
 		config.SubsPollDuration = 100 * time.Millisecond
 	} else {
-		config.Core.Watches.Runner = "off"
+		config.Watches.Runner = "off"
 	}
-	config.Core.Watches.EnrichmentWorkers = 0
+	config.Watches.EnrichmentWorkers = 0
 
 	// No path fixups here: relative source paths (file roots, openapi specs
 	// dirs) resolve against config_path in the engine itself now.
@@ -400,7 +400,7 @@ func startSaaSOpsEvalAPIMock(config *serv.Config) *httptest.Server {
 		return nil
 	}
 	hasAccountHealth := false
-	for _, source := range config.Core.Sources {
+	for _, source := range config.Sources {
 		if source.Name == "account_health_api" {
 			hasAccountHealth = true
 			break
@@ -433,8 +433,8 @@ func applySaaSOpsEvalAPIBaseURL(config *serv.Config, server *httptest.Server) {
 	if config == nil || server == nil {
 		return
 	}
-	for sourceIndex := range config.Core.Sources {
-		source := &config.Core.Sources[sourceIndex]
+	for sourceIndex := range config.Sources {
+		source := &config.Sources[sourceIndex]
 		if source.Name != "account_health_api" {
 			continue
 		}
@@ -538,7 +538,7 @@ func copyEvalFile(source, target string) error {
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 		return err
 	}

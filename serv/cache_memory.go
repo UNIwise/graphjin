@@ -387,19 +387,6 @@ func (mc *MemoryCache) filterExcludedTables(refs []core.RowRef) []core.RowRef {
 	return filtered
 }
 
-// Key helpers
-func (mc *MemoryCache) rowKey(table, id string) string {
-	return core.RowRef{Table: table, ID: id}.DependencyKey()
-}
-
-func (mc *MemoryCache) modKey(table, id string) string {
-	return core.RowRef{Table: table, ID: id}.DependencyKey()
-}
-
-func (mc *MemoryCache) tableModKey(table string) string {
-	return core.RowRef{Kind: core.CacheKindTable, Table: table}.DependencyKey()
-}
-
 // Metric recording helpers (record both internal metrics and OTel metrics)
 func (mc *MemoryCache) recordHit(ctx context.Context) {
 	mc.metrics.Hits.Add(1)

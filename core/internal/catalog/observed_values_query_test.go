@@ -150,10 +150,10 @@ func TestRemoteJoinEdgeAttachesToTables(t *testing.T) {
 
 	var joinEdge, fkEdge *Edge
 	for i := range snap.Edges {
-		switch {
-		case snap.Edges[i].Kind == "served_under":
+		switch snap.Edges[i].Kind {
+		case "served_under":
 			joinEdge = &snap.Edges[i]
-		case snap.Edges[i].Kind == "references":
+		case "references":
 			fkEdge = &snap.Edges[i]
 		}
 	}

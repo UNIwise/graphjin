@@ -335,7 +335,7 @@ func sortAnnotationRowsNewest(rows []map[string]any) {
 // appendAnnotationNotices is best-effort and intentionally owner-scoped. It
 // keeps deferred drafts discoverable without turning them into hidden memory.
 func (s *graphjinService) appendAnnotationNotices(ctx context.Context, resp *gjagent.Response) {
-	if s == nil || resp == nil || s.conf == nil || !s.conf.Core.Artifacts.Enabled {
+	if s == nil || resp == nil || s.conf == nil || !s.conf.Artifacts.Enabled {
 		return
 	}
 	ownerID, ok := artifactUserID(ctx)
@@ -365,7 +365,7 @@ func (s *graphjinService) appendAnnotationNotices(ctx context.Context, resp *gja
 }
 
 func (s *graphjinService) approvedAnnotationSemanticDocuments(ctx context.Context) ([]semanticDocument, error) {
-	if s == nil || s.conf == nil || !s.conf.Core.Artifacts.Enabled {
+	if s == nil || s.conf == nil || !s.conf.Artifacts.Enabled {
 		return nil, nil
 	}
 	if _, _, _, ok := s.artifactDB(); !ok {
@@ -500,7 +500,7 @@ func (ms *mcpServer) mergeCatalogAnnotations(ctx context.Context, q catalogGraph
 }
 
 func (s *graphjinService) visibleApprovedAnnotationRows(ctx context.Context, targets []string) ([]map[string]any, error) {
-	if s == nil || s.conf == nil || s.gj == nil || !s.conf.Core.Artifacts.Enabled || len(targets) == 0 {
+	if s == nil || s.conf == nil || s.gj == nil || !s.conf.Artifacts.Enabled || len(targets) == 0 {
 		return nil, nil
 	}
 	if _, ok := artifactUserID(ctx); !ok {

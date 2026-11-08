@@ -28,7 +28,7 @@ func newSemanticEnableFixture(t *testing.T, client SemanticEmbeddingClient, pres
 	// Every pooled connection to ":memory:" is its own database, so a second
 	// connection would introspect an empty schema and DDL would land nowhere.
 	db.SetMaxOpenConns(1)
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	if _, err := db.Exec(`CREATE TABLE metrics (id INTEGER PRIMARY KEY, revenue NUMERIC, recorded_at TIMESTAMP)`); err != nil {
 		t.Fatal(err)
 	}

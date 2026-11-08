@@ -141,7 +141,7 @@ func runSubscribeStream(
 			payload := append([]byte(nil), raw...)
 			var probe ssePayload
 			if err := json.Unmarshal(payload, &probe); err == nil && len(probe.Errors) > 0 {
-				fmt.Fprintf(stderr, "subscription errors: %s\n", string(probe.Errors))
+				_, _ = fmt.Fprintf(stderr, "subscription errors: %s\n", string(probe.Errors))
 			}
 			return emit(json.RawMessage(payload))
 		case "complete":

@@ -56,7 +56,7 @@ WHERE schemaname = $1 AND tablename = $2`
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := map[string]ColumnStats{}
 	for rows.Next() {
@@ -133,7 +133,7 @@ WHERE owner = UPPER(:1) AND table_name = UPPER(:2)`
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := map[string]ColumnStats{}
 	for rows.Next() {

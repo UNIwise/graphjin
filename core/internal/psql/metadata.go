@@ -24,9 +24,9 @@ func (c *compilerContext) renderVar(vv string) {
 			f = i
 
 		case f != -1 &&
-			!(v >= 'a' && v <= 'z') &&
-			!(v >= 'A' && v <= 'Z') &&
-			!(v >= '0' && v <= '9') &&
+			(v < 'a' || v > 'z') &&
+			(v < 'A' || v > 'Z') &&
+			(v < '0' || v > '9') &&
 			v != '_' &&
 			v != ':':
 			name, _type := parseVar(vv[f+1 : i])

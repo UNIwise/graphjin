@@ -48,7 +48,7 @@ sources:
 	if err != nil {
 		t.Fatalf("NewConfig: %v", err)
 	}
-	grants := conf.Core.Sources[0].Access.Grants
+	grants := conf.Sources[0].Access.Grants
 	if len(grants) != 1 || grants[0].Role != "finance" || len(grants[0].Tables) != 1 {
 		t.Fatalf("grants = %+v", grants)
 	}
@@ -69,10 +69,10 @@ sources:
 	if err != nil {
 		t.Fatalf("NewConfig: %v", err)
 	}
-	if !conf.Core.CatalogEnabled() {
+	if !conf.CatalogEnabled() {
 		t.Fatal("catalog.enabled: auto should enable catalog outside production")
 	}
-	if !conf.Core.CatalogAutoCodeRelationsEnabled() {
+	if !conf.CatalogAutoCodeRelationsEnabled() {
 		t.Fatal("catalog.auto_code_relations: auto should follow catalog.enabled")
 	}
 }
@@ -91,13 +91,13 @@ workflows:
 	if err != nil {
 		t.Fatalf("NewConfig: %v", err)
 	}
-	if got, ok := conf.Core.System.Capabilities["catalog.read"]; !ok || got {
+	if got, ok := conf.System.Capabilities["catalog.read"]; !ok || got {
 		t.Fatalf("system capability catalog.read = %v, present=%v", got, ok)
 	}
-	if got, ok := conf.Core.System.Capabilities["runtime.read"]; !ok || !got {
+	if got, ok := conf.System.Capabilities["runtime.read"]; !ok || !got {
 		t.Fatalf("system capability runtime.read = %v, present=%v", got, ok)
 	}
-	if got, ok := conf.Core.Workflows.Capabilities["execute"]; !ok || got {
+	if got, ok := conf.Workflows.Capabilities["execute"]; !ok || got {
 		t.Fatalf("workflow capability execute = %v, present=%v", got, ok)
 	}
 }
@@ -113,10 +113,10 @@ sources:
 	if err != nil {
 		t.Fatalf("NewConfig: %v", err)
 	}
-	if conf.Core.CatalogEnabled() {
+	if conf.CatalogEnabled() {
 		t.Fatal("catalog.enabled: auto should disable catalog in production")
 	}
-	if conf.Core.CatalogAutoCodeRelationsEnabled() {
+	if conf.CatalogAutoCodeRelationsEnabled() {
 		t.Fatal("catalog.auto_code_relations: auto should follow catalog.enabled in production")
 	}
 }
@@ -204,9 +204,9 @@ mode: agentic
 	if err != nil {
 		t.Fatalf("NewConfig: %v", err)
 	}
-	if conf.Core.Mode != "agentic" || conf.Serv.Production || conf.Core.Production {
+	if conf.Mode != "agentic" || conf.Serv.Production || conf.Core.Production {
 		t.Fatalf("agentic mode normalization drift: mode=%q serv_prod=%v core_prod=%v",
-			conf.Core.Mode, conf.Serv.Production, conf.Core.Production)
+			conf.Mode, conf.Serv.Production, conf.Core.Production)
 	}
 	if conf.mcpDisabled() {
 		t.Fatal("agentic config should keep MCP enabled by default")
@@ -363,14 +363,14 @@ func TestParsedDevAndAgenticRuntimeDefaults(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewConfig: %v", err)
 			}
-			if !conf.Core.Artifacts.Enabled || conf.Core.Artifacts.Source != "" || !conf.managedArtifactStore {
-				t.Fatalf("artifact defaults = %+v managed=%v", conf.Core.Artifacts, conf.managedArtifactStore)
+			if !conf.Artifacts.Enabled || conf.Artifacts.Source != "" || !conf.managedArtifactStore {
+				t.Fatalf("artifact defaults = %+v managed=%v", conf.Artifacts, conf.managedArtifactStore)
 			}
-			if !conf.Core.Watches.Enabled || conf.Core.Watches.Runner != "all" {
-				t.Fatalf("watch defaults = %+v", conf.Core.Watches)
+			if !conf.Watches.Enabled || conf.Watches.Runner != "all" {
+				t.Fatalf("watch defaults = %+v", conf.Watches)
 			}
-			if !conf.Core.Tasks.Enabled {
-				t.Fatalf("task defaults = %+v", conf.Core.Tasks)
+			if !conf.Tasks.Enabled {
+				t.Fatalf("task defaults = %+v", conf.Tasks)
 			}
 			if !conf.Agent.Enabled || !conf.MCP.IncludeToolsWithAgent {
 				t.Fatalf("service defaults: agent=%+v mcp=%+v", conf.Agent, conf.MCP)
@@ -415,8 +415,8 @@ func TestParsedProdAndDirectConfigKeepLiteralDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewConfig: %v", err)
 	}
-	if prod.Core.Artifacts.Enabled || prod.Core.Watches.Enabled || prod.Core.Tasks.Enabled || prod.Agent.Enabled || prod.MCP.IncludeToolsWithAgent {
-		t.Fatalf("prod defaults changed: artifacts=%+v watches=%+v tasks=%+v agent=%+v mcp=%+v", prod.Core.Artifacts, prod.Core.Watches, prod.Core.Tasks, prod.Agent, prod.MCP)
+	if prod.Artifacts.Enabled || prod.Watches.Enabled || prod.Tasks.Enabled || prod.Agent.Enabled || prod.MCP.IncludeToolsWithAgent {
+		t.Fatalf("prod defaults changed: artifacts=%+v watches=%+v tasks=%+v agent=%+v mcp=%+v", prod.Artifacts, prod.Watches, prod.Tasks, prod.Agent, prod.MCP)
 	}
 
 	direct := &Config{Core: Core{Mode: "agentic"}}
@@ -424,7 +424,7 @@ func TestParsedProdAndDirectConfigKeepLiteralDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	applyRuntimeModeDefaults(direct)
-	if direct.Core.Artifacts.Enabled || direct.Core.Watches.Enabled || direct.Core.Tasks.Enabled || direct.Agent.Enabled || direct.MCP.IncludeToolsWithAgent {
+	if direct.Artifacts.Enabled || direct.Watches.Enabled || direct.Tasks.Enabled || direct.Agent.Enabled || direct.MCP.IncludeToolsWithAgent {
 		t.Fatalf("direct Go config received parsed defaults: %+v", direct)
 	}
 }
@@ -444,11 +444,11 @@ mcp:
 	if err != nil {
 		t.Fatalf("NewConfig: %v", err)
 	}
-	if conf.Core.Artifacts.Enabled || conf.Core.Watches.Enabled || conf.Core.Tasks.Enabled || conf.Agent.Enabled || conf.MCP.IncludeToolsWithAgent {
-		t.Fatalf("explicit opt-outs not preserved: artifacts=%+v watches=%+v tasks=%+v agent=%+v mcp=%+v", conf.Core.Artifacts, conf.Core.Watches, conf.Core.Tasks, conf.Agent, conf.MCP)
+	if conf.Artifacts.Enabled || conf.Watches.Enabled || conf.Tasks.Enabled || conf.Agent.Enabled || conf.MCP.IncludeToolsWithAgent {
+		t.Fatalf("explicit opt-outs not preserved: artifacts=%+v watches=%+v tasks=%+v agent=%+v mcp=%+v", conf.Artifacts, conf.Watches, conf.Tasks, conf.Agent, conf.MCP)
 	}
-	if conf.Core.Watches.Runner != "all" {
-		t.Fatalf("explicit runner = %q, want all", conf.Core.Watches.Runner)
+	if conf.Watches.Runner != "all" {
+		t.Fatalf("explicit runner = %q, want all", conf.Watches.Runner)
 	}
 
 	invalid, err := NewConfig(`
@@ -475,8 +475,8 @@ tasks:
 	if err != nil {
 		t.Fatalf("NewConfig: %v", err)
 	}
-	if !conf.Core.Artifacts.Enabled || !conf.Core.Watches.Enabled || conf.Core.Tasks.Enabled {
-		t.Fatalf("task opt-out changed related defaults: artifacts=%+v watches=%+v tasks=%+v", conf.Core.Artifacts, conf.Core.Watches, conf.Core.Tasks)
+	if !conf.Artifacts.Enabled || !conf.Watches.Enabled || conf.Tasks.Enabled {
+		t.Fatalf("task opt-out changed related defaults: artifacts=%+v watches=%+v tasks=%+v", conf.Artifacts, conf.Watches, conf.Tasks)
 	}
 	if got := effectiveSettingValue(conf.EffectiveSettings(), "tasks.enabled"); got != false {
 		t.Fatalf("effective tasks.enabled = %#v, want false", got)
@@ -492,8 +492,8 @@ tasks:
 	if err != nil {
 		t.Fatalf("NewConfig: %v", err)
 	}
-	if !conf.managedArtifactStore || !conf.Core.Tasks.Enabled {
-		t.Fatalf("expected managed-store task defaults, got managed=%v tasks=%+v", conf.managedArtifactStore, conf.Core.Tasks)
+	if !conf.managedArtifactStore || !conf.Tasks.Enabled {
+		t.Fatalf("expected managed-store task defaults, got managed=%v tasks=%+v", conf.managedArtifactStore, conf.Tasks)
 	}
 	if err := validateServiceIsSourcesUsedConfig(conf); err == nil || !strings.Contains(err.Error(), "tasks.max_entries_per_task") {
 		t.Fatalf("managed-store task validation error = %v", err)
@@ -508,8 +508,8 @@ func TestParsedRuntimeDefaultsRespectEnvironmentOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewConfig: %v", err)
 	}
-	if conf.Core.Artifacts.Enabled || conf.Core.Watches.Enabled || conf.Core.Tasks.Enabled || conf.Agent.Enabled || conf.MCP.IncludeToolsWithAgent {
-		t.Fatalf("environment opt-outs not preserved: artifacts=%+v watches=%+v tasks=%+v agent=%+v mcp=%+v", conf.Core.Artifacts, conf.Core.Watches, conf.Core.Tasks, conf.Agent, conf.MCP)
+	if conf.Artifacts.Enabled || conf.Watches.Enabled || conf.Tasks.Enabled || conf.Agent.Enabled || conf.MCP.IncludeToolsWithAgent {
+		t.Fatalf("environment opt-outs not preserved: artifacts=%+v watches=%+v tasks=%+v agent=%+v mcp=%+v", conf.Artifacts, conf.Watches, conf.Tasks, conf.Agent, conf.MCP)
 	}
 }
 
@@ -542,14 +542,14 @@ artifacts:
 	if err != nil {
 		t.Fatalf("NewConfig: %v", err)
 	}
-	if conf.managedArtifactStore || conf.Core.Artifacts.Source != "" {
-		t.Fatalf("explicit legacy artifact config moved stores: source=%q managed=%v", conf.Core.Artifacts.Source, conf.managedArtifactStore)
+	if conf.managedArtifactStore || conf.Artifacts.Source != "" {
+		t.Fatalf("explicit legacy artifact config moved stores: source=%q managed=%v", conf.Artifacts.Source, conf.managedArtifactStore)
 	}
 	if err := normalizeServiceSources(conf); err != nil {
 		t.Fatalf("normalizeServiceSources: %v", err)
 	}
-	if conf.Core.Artifacts.Source != "app" {
-		t.Fatalf("legacy artifact source = %q, want app", conf.Core.Artifacts.Source)
+	if conf.Artifacts.Source != "app" {
+		t.Fatalf("legacy artifact source = %q, want app", conf.Artifacts.Source)
 	}
 }
 
@@ -577,9 +577,9 @@ mode: prod
 	if err != nil {
 		t.Fatalf("NewConfig: %v", err)
 	}
-	if conf.Core.Mode != "prod" || conf.Serv.Production || conf.Core.Production {
+	if conf.Mode != "prod" || conf.Serv.Production || conf.Core.Production {
 		t.Fatalf("prod mode normalization drift: mode=%q serv_prod=%v core_prod=%v",
-			conf.Core.Mode, conf.Serv.Production, conf.Core.Production)
+			conf.Mode, conf.Serv.Production, conf.Core.Production)
 	}
 	if !conf.mcpDisabled() {
 		t.Fatal("legacy prod mode config should disable MCP by default")
@@ -598,11 +598,11 @@ sources:
 	if err != nil {
 		t.Fatalf("NewConfig: %v", err)
 	}
-	if conf.Core.Mode != "dev" || !conf.Serv.Production || !conf.Core.Production {
+	if conf.Mode != "dev" || !conf.Serv.Production || !conf.Core.Production {
 		t.Fatalf("dev mode normalization drift: mode=%q serv_prod=%v core_prod=%v",
-			conf.Core.Mode, conf.Serv.Production, conf.Core.Production)
+			conf.Mode, conf.Serv.Production, conf.Core.Production)
 	}
-	if !conf.Core.CatalogEnabled() {
+	if !conf.CatalogEnabled() {
 		t.Fatal("catalog.enabled: auto should follow dev mode even if legacy production is true")
 	}
 }
@@ -628,8 +628,8 @@ func TestWebUIDefaultsFollowMode(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewConfig: %v", err)
 			}
-			if conf.Serv.WebUI != tt.want {
-				t.Fatalf("web_ui = %v, want %v", conf.Serv.WebUI, tt.want)
+			if conf.WebUI != tt.want {
+				t.Fatalf("web_ui = %v, want %v", conf.WebUI, tt.want)
 			}
 		})
 	}
@@ -663,8 +663,8 @@ web_ui: true
 			if err != nil {
 				t.Fatalf("NewConfig: %v", err)
 			}
-			if conf.Serv.WebUI != tt.want {
-				t.Fatalf("web_ui = %v, want %v", conf.Serv.WebUI, tt.want)
+			if conf.WebUI != tt.want {
+				t.Fatalf("web_ui = %v, want %v", conf.WebUI, tt.want)
 			}
 			if !conf.webUIExplicit {
 				t.Fatal("web_ui explicit marker should be set")

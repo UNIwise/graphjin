@@ -127,7 +127,7 @@ func TestLocal_StatGetPutDelete_Roundtrip(t *testing.T) {
 		t.Fatalf("get: %v", err)
 	}
 	got, _ := io.ReadAll(r)
-	r.Close()
+	_ = r.Close()
 	if !bytes.Equal(got, body) {
 		t.Errorf("get body = %q, want %q", got, body)
 	}

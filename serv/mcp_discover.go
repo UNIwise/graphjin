@@ -28,75 +28,6 @@ import (
 
 // registerDiscoverTools is retained as an inert compatibility hook.
 func (ms *mcpServer) registerDiscoverTools() {
-	return
-
-	if !ms.service.conf.MCP.AllowDevTools {
-		return
-	}
-	ms.srv.AddTool(mcp.NewTool(
-		"discover_databases",
-		mcp.WithDescription("Scan the local system for running databases. "+
-			"Probes well-known TCP ports on localhost for PostgreSQL, MySQL, MariaDB, MSSQL, Oracle, and MongoDB. "+
-			"Optionally checks Unix domain sockets for PostgreSQL and MySQL when scan_unix_sockets is true. "+
-			"Snowflake is not auto-scanned on localhost; provide it explicitly via connection_string in targets or MCP config flows. "+
-			"Searches for SQLite database files. Detects database Docker containers. "+
-			"Then attempts to connect using default credentials and lists database names inside each instance. "+
-			"If defaults fail, reports auth_failed so you can re-call with user/password. "+
-			"Response includes machine-readable next-step guidance in the `next` field. "+
-			"Use this before configuring GraphJin to find which databases are available. "+
-			"Does NOT require an existing database connection. "+
-			"Note: system databases (postgres, mysql, information_schema, master, etc.) "+
-			"are filtered from the databases list by default. "+
-			"If no user databases exist, use update_current_config with create_if_not_exists: true to create one."),
-		mcp.WithString("scan_dir",
-			mcp.Description("Directory to scan for SQLite files (default: current working directory)")),
-		mcp.WithBoolean("skip_docker",
-			mcp.Description("Skip Docker container detection (default: false)")),
-		mcp.WithBoolean("skip_probe",
-			mcp.Description("Skip connection probing and database listing (default: false)")),
-		mcp.WithBoolean("scan_local",
-			mcp.Description("Scan localhost ports and sqlite files (default: true)")),
-		mcp.WithBoolean("scan_unix_sockets",
-			mcp.Description("Scan local Unix sockets for PostgreSQL/MySQL/MongoDB (default: false)")),
-		mcp.WithArray("targets",
-			mcp.Description("Optional explicit targets to probe. Each item: {type?, host?, port?, source_label?, user?, password?, dbname?, connection_string?}."),
-			mcp.Items(map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"type":              map[string]any{"type": "string", "description": "Database type (postgres, mysql, mssql, oracle, mongodb, snowflake)"},
-					"host":              map[string]any{"type": "string", "description": "Hostname or IP address"},
-					"port":              map[string]any{"type": "number", "description": "Port number"},
-					"source_label":      map[string]any{"type": "string", "description": "Label for this target source"},
-					"user":              map[string]any{"type": "string", "description": "Username for authentication"},
-					"password":          map[string]any{"type": "string", "description": "Password for authentication"},
-					"dbname":            map[string]any{"type": "string", "description": "Database name"},
-					"connection_string": map[string]any{"type": "string", "description": "Direct connection string (required for Snowflake targets)"},
-				},
-			}),
-		),
-		mcp.WithArray("scan_ports",
-			mcp.Description("Optional custom port list for localhost scanning (default uses known DB ports)."),
-			mcp.WithNumberItems(),
-		),
-		mcp.WithNumber("probe_timeout_ms",
-			mcp.Description("Probe timeout in milliseconds (default: 500)")),
-		mcp.WithBoolean("include_system_databases",
-			mcp.Description("Include system databases in discovered database lists (default from mcp.default_db_allowed)")),
-		mcp.WithNumber("sqlite_max_depth",
-			mcp.Description("SQLite file scan depth from scan_dir (default: 1, 0 = only scan_dir)")),
-		mcp.WithString("user",
-			mcp.Description("Username to try when probing (tried before defaults)")),
-		mcp.WithString("password",
-			mcp.Description("Password to try when probing")),
-	), ms.handleDiscoverDatabases)
-
-	// list_databases - List databases on all connected servers
-	ms.srv.AddTool(mcp.NewTool(
-		"list_databases",
-		mcp.WithDescription("List databases on all configured database servers. "+
-			"Unlike discover_databases (which scans for new servers), this queries EXISTING configured connections "+
-			"for their database lists. Use after initial setup to see what databases are available on each server."),
-	), ms.handleListDatabases)
 }
 
 // DatabaseConnection represents a single database server connection for list_databases
@@ -197,109 +128,6 @@ type dbProbe struct {
 type socketProbe struct {
 	dbType string
 	path   string
-}
-
-// handleListDatabases queries all configured database connections for their database lists
-func (ms *mcpServer) handleListDatabases(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	conf := &ms.service.conf.Core
-	activeDB := ms.getActiveDatabase()
-	var connections []DatabaseConnection
-	totalDBs := 0
-
-	// Query all configured database connections
-	queried := make(map[string]bool) // track host:port to avoid duplicates
-
-	// Sort s.dbs keys for deterministic output order
-	dbNames := make([]string, 0, len(ms.service.dbs))
-	for name := range ms.service.dbs {
-		dbNames = append(dbNames, name)
-	}
-	sort.Strings(dbNames)
-	for _, name := range dbNames {
-		db := ms.service.dbs[name]
-		dbConf, ok := conf.Databases[name]
-		if !ok {
-			continue
-		}
-		hostPort := fmt.Sprintf("%s:%d", dbConf.Host, dbConf.Port)
-		queryKey := hostPort
-		if dbConf.ConnString != "" && dbConf.Host == "" {
-			hostPort = "connection_string"
-			queryKey = "connection_string:" + name
-		}
-		if queried[queryKey] {
-			continue
-		}
-		queried[queryKey] = true
-
-		dbType := strings.ToLower(dbConf.Type)
-		if dbType == "" {
-			dbType = ms.service.conf.DBType
-		}
-		names, err := listDatabaseNames(db, dbType)
-		if !ms.service.conf.MCP.DefaultDBAllowed {
-			names = filterSystemDatabases(dbType, names)
-		}
-		conn := DatabaseConnection{
-			Name:   name,
-			Type:   dbConf.Type,
-			Host:   hostPort,
-			Active: name == activeDB,
-		}
-		if err != nil {
-			conn.Error = err.Error()
-		} else {
-			conn.Databases = names
-			totalDBs += len(names)
-		}
-		connections = append(connections, conn)
-	}
-
-	// Sort conf.Databases keys for deterministic output order
-	confNames := make([]string, 0, len(conf.Databases))
-	for name := range conf.Databases {
-		confNames = append(confNames, name)
-	}
-	sort.Strings(confNames)
-	for _, name := range confNames {
-		dbConf := conf.Databases[name]
-		hostPort := fmt.Sprintf("%s:%d", dbConf.Host, dbConf.Port)
-		queryKey := hostPort
-		if dbConf.ConnString != "" && dbConf.Host == "" {
-			hostPort = "connection_string"
-			queryKey = "connection_string:" + name
-		}
-		if queried[queryKey] {
-			continue
-		}
-		queried[queryKey] = true
-
-		dbType := strings.ToLower(dbConf.Type)
-		names, err := testDatabaseConnection(dbType, dbConf.Host, dbConf.Port, dbConf.User, dbConf.Password, dbConf.DBName, dbConf.ConnString)
-		if !ms.service.conf.MCP.DefaultDBAllowed {
-			names = filterSystemDatabases(dbType, names)
-		}
-
-		conn := DatabaseConnection{
-			Name:   name,
-			Type:   dbConf.Type,
-			Host:   hostPort,
-			Active: name == activeDB,
-		}
-		if err != nil {
-			conn.Error = err.Error()
-		} else {
-			conn.Databases = names
-			totalDBs += len(names)
-		}
-		connections = append(connections, conn)
-	}
-
-	result := ListDatabasesResult{
-		Connections:    connections,
-		TotalDatabases: totalDBs,
-	}
-	return ms.toolResultJSON("list_databases", req.GetArguments(), result)
 }
 
 // handleDiscoverDatabases scans the local system for running databases
@@ -569,7 +397,7 @@ func checkTCPPort(host string, port int, timeout time.Duration) bool {
 	if err != nil {
 		return false
 	}
-	conn.Close()
+	_ = conn.Close()
 	return true
 }
 
@@ -579,7 +407,7 @@ func checkUnixSocket(path string, timeout time.Duration) bool {
 	if err != nil {
 		return false
 	}
-	conn.Close()
+	_ = conn.Close()
 	return true
 }
 
@@ -893,7 +721,7 @@ func probeDatabase(db *DiscoveredDatabase, userParam, passwordParam string) {
 			db.ProbeStatus = classifyProbeError(err)
 			return
 		}
-		defer sqlDB.Close()
+		defer func() { _ = sqlDB.Close() }()
 
 		names, err := listDatabaseNames(sqlDB, dbType)
 		db.AuthStatus = "ok"
@@ -955,7 +783,7 @@ func probeDatabase(db *DiscoveredDatabase, userParam, passwordParam string) {
 
 		// Success — list databases
 		names, err := listDatabaseNames(sqlDB, dbType)
-		sqlDB.Close()
+		_ = sqlDB.Close()
 
 		db.AuthStatus = "ok"
 		db.AuthUser = cred.user
@@ -1003,7 +831,7 @@ func probeSQLite(db *DiscoveredDatabase) {
 		db.ProbeStatus = classifyProbeError(err)
 		return
 	}
-	defer sqlDB.Close()
+	defer func() { _ = sqlDB.Close() }()
 
 	names, err := listDatabaseNames(sqlDB, "sqlite")
 	db.AuthStatus = "ok"
@@ -1230,7 +1058,7 @@ func tryConnect(driverName, connString string, timeout time.Duration) (*sql.DB, 
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, err
 	}
 	return db, nil
@@ -1267,7 +1095,7 @@ func listDatabaseNames(db *sql.DB, dbType string) ([]string, error) {
 		}
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var names []string
 	for rows.Next() {
@@ -1289,7 +1117,7 @@ func listOracleFallback(db *sql.DB) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var names []string
 	for rows.Next() {
@@ -1440,9 +1268,10 @@ func enrichDiscoveredDatabase(db *DiscoveredDatabase) {
 	db.NextActions = actions
 
 	if db.ProbeStatus == "" {
-		if db.AuthStatus == "ok" {
+		switch db.AuthStatus {
+		case "ok":
 			db.ProbeStatus = "ok"
-		} else if db.AuthStatus == "auth_failed" {
+		case "auth_failed":
 			db.ProbeStatus = "auth_failed"
 		}
 	}

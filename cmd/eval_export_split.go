@@ -67,7 +67,7 @@ func selectExportableEpisodes(cmd *cobra.Command, episodes []gjeval.Episode,
 	if len(unknown) != 0 && cmd != nil {
 		// Not a refusal: a task the split never mentions is not held out. It is
 		// not vouched for either, which the caller should hear.
-		fmt.Fprintf(cmd.ErrOrStderr(),
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
 			"  %d episode(s) belong to tasks this split does not mention; they were left out.\n", len(unknown))
 	}
 	return selected, nil
@@ -85,7 +85,7 @@ func episodesByRecordedSide(cmd *cobra.Command, episodes []gjeval.Episode, allow
 	}
 	if held == 0 || allowEvalSide {
 		if held != 0 && cmd != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(),
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
 				"  exporting %d held-out episode(s) because --allow-eval-side was given.\n", held)
 		}
 		return episodes, nil

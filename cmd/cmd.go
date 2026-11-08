@@ -70,7 +70,7 @@ func newRootCmd() *cobra.Command {
 	// Add --config as an alias for --path
 	rootCmd.PersistentFlags().StringVar(&cpath,
 		"config", "./config", "alias for --path")
-	rootCmd.PersistentFlags().MarkHidden("config")
+	_ = rootCmd.PersistentFlags().MarkHidden("config")
 
 	// Top-level commands. Server-side lifecycle commands (new, db, test) are
 	// children of `serve` — see servCmd() in cmd_serv.go.

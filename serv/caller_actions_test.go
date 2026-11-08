@@ -11,7 +11,7 @@ import (
 
 func TestCallerAllowedActionsFollowSourceAccessAndIdentity(t *testing.T) {
 	ms := mockMcpServerWithConfig(MCPConfig{AllowRawQueries: true, AllowMutations: true})
-	source := &ms.service.conf.Core.Sources[0]
+	source := &ms.service.conf.Sources[0]
 	source.Capabilities = map[string]bool{sourcecap.KeyDataWrite: true}
 	source.Access = core.SourceAccessConfig{
 		Read:   core.AccessModeAccount,
@@ -63,7 +63,7 @@ func TestCallerAllowedActionsFollowSourceAccessAndIdentity(t *testing.T) {
 
 func TestCallerCapabilityProfilePublishesOwnerScopedRootActionsOnlyToAuthenticatedCaller(t *testing.T) {
 	ms := mockMcpServerWithConfig(MCPConfig{AllowRawQueries: true, AllowMutations: true})
-	ms.service.conf.Core.Tasks.Enabled = true
+	ms.service.conf.Tasks.Enabled = true
 
 	anon := ms.callerCapabilityProfile(context.Background(), false)
 	user := ms.callerCapabilityProfile(sourceModeUserTestContext(), false)

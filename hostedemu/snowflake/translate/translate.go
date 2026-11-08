@@ -1222,10 +1222,6 @@ func indexByteAfter(sql string, b byte, start int) int {
 	return -1
 }
 
-func nextCastOperator(sql string) int {
-	return nextCastOperatorFrom(sql, 0)
-}
-
 func nextCastOperatorFrom(sql string, start int) int {
 	inSingle := false
 	inDouble := false

@@ -88,10 +88,10 @@ func (s *graphjinService) openCodeSQLDatabase(name string, dbConf core.DatabaseC
 func (s *graphjinService) codeSQLSourcePolicy(name string, dbConf core.DatabaseConfig) (readOnly, watch bool) {
 	readOnly = dbConf.ReadOnly
 	watch = !dbConf.ReadOnly
-	if s == nil || s.conf == nil || !s.conf.Core.IsSourcesUsed() {
+	if s == nil || s.conf == nil || !s.conf.IsSourcesUsed() {
 		return readOnly, watch
 	}
-	source, ok := s.conf.Core.SourceByName(name)
+	source, ok := s.conf.SourceByName(name)
 	if !ok || source.CanonicalKind() != sourcecap.KindCode {
 		return readOnly, watch
 	}

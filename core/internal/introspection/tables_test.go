@@ -635,7 +635,7 @@ func TestPostgresDiscoverColumnsSkipsConstraintRowsWhenPreflightIsEmpty(t *testi
 		},
 	}
 	db := openPostgresDiscoveryFakeDB(t, state)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	cols, err := DiscoverColumns(context.Background(), db, "postgres", nil)
 	if err != nil {
@@ -670,7 +670,7 @@ func TestPostgresDiscoverColumnsMergesBatchedConstraintRows(t *testing.T) {
 		},
 	}
 	db := openPostgresDiscoveryFakeDB(t, state)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	cols, err := DiscoverColumns(context.Background(), db, "postgres", nil)
 	if err != nil {
@@ -699,7 +699,7 @@ func TestSnowflakeDiscoverColumnsScopedBulkAndShowKeys(t *testing.T) {
 		},
 	}
 	db := openSnowflakeDiscoveryFakeDB(t, state)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	cols, err := DiscoverColumns(context.Background(), db, "snowflake", nil)
 	if err != nil {
@@ -731,7 +731,7 @@ func TestSnowflakeDiscoverColumnsMergesShowKeyRows(t *testing.T) {
 		},
 	}
 	db := openSnowflakeDiscoveryFakeDB(t, state)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	cols, err := DiscoverColumns(context.Background(), db, "snowflake", nil)
 	if err != nil {
@@ -770,7 +770,7 @@ func TestSnowflakeDiscoverColumnsAppliesFKMetadataOverlay(t *testing.T) {
 		},
 	}
 	db := openSnowflakeDiscoveryFakeDB(t, state)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	cols, err := DiscoverColumns(context.Background(), db, "snowflake", nil)
 	if err != nil {
@@ -804,7 +804,7 @@ func TestSnowflakeDiscoverColumnsRunsLargeMultiSchemaCatalogWithOneBulkQuery(t *
 		}
 	}
 	db := openSnowflakeDiscoveryFakeDB(t, state)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	cols, err := DiscoverColumns(context.Background(), db, "snowflake", nil)
 	if err != nil {
@@ -859,7 +859,7 @@ func TestSnowflakeDiscoverCompositeFKsUsesShowImportedKeysAndOverrides(t *testin
 		},
 	}
 	db := openSnowflakeDiscoveryFakeDB(t, state)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	fks, err := DiscoverCompositeFKs(context.Background(), db, "snowflake")
 	if err != nil {
@@ -915,7 +915,7 @@ func TestDiscoverColumnsScaleUsesBatchedMetadata(t *testing.T) {
 				rows:   scaleColumnRows(tt.schema, tableCount),
 			}
 			db := openScaleDiscoveryFakeDB(t, state)
-			defer db.Close()
+			defer func() { _ = db.Close() }()
 
 			var (
 				eventMu sync.Mutex
@@ -995,7 +995,7 @@ type postgresDiscoveryFakeDriver struct {
 }
 
 func (d postgresDiscoveryFakeDriver) Open(_ string) (driver.Conn, error) {
-	return postgresDiscoveryFakeConn{state: d.state}, nil
+	return postgresDiscoveryFakeConn(d), nil
 }
 
 type postgresDiscoveryFakeConn struct {
@@ -1123,7 +1123,7 @@ type scaleDiscoveryFakeDriver struct {
 }
 
 func (d scaleDiscoveryFakeDriver) Open(_ string) (driver.Conn, error) {
-	return scaleDiscoveryFakeConn{state: d.state}, nil
+	return scaleDiscoveryFakeConn(d), nil
 }
 
 type scaleDiscoveryFakeConn struct {
@@ -1245,7 +1245,7 @@ type snowflakeDiscoveryFakeDriver struct {
 }
 
 func (d snowflakeDiscoveryFakeDriver) Open(_ string) (driver.Conn, error) {
-	return snowflakeDiscoveryFakeConn{state: d.state}, nil
+	return snowflakeDiscoveryFakeConn(d), nil
 }
 
 type snowflakeDiscoveryFakeConn struct {

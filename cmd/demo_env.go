@@ -52,7 +52,7 @@ func loadDemoEnvFile(envPath string, out io.Writer) error {
 		return err
 	}
 	if out != nil {
-		fmt.Fprintf(out, "demo env %-18s loaded %s\n", ".env", envPath)
+		_, _ = fmt.Fprintf(out, "demo env %-18s loaded %s\n", ".env", envPath)
 	}
 	return nil
 }
@@ -67,7 +67,7 @@ func applyDemoAgentEnvDefaults(out io.Writer) {
 		if matched := demoAgentProviderKeyEnv(pinned); matched != "" {
 			keyEnv, provider = matched, pinned
 		} else if keyEnv != "" && out != nil {
-			fmt.Fprintf(out, "demo env %-18s warning %s is pinned but no matching key variable is set; falling back to %s\n", "agent", pinned, keyEnv)
+			_, _ = fmt.Fprintf(out, "demo env %-18s warning %s is pinned but no matching key variable is set; falling back to %s\n", "agent", pinned, keyEnv)
 		}
 	}
 	if keyEnv == "" {
@@ -99,7 +99,7 @@ func applyDemoAgentEnvDefaults(out io.Writer) {
 		changed = true
 	}
 	if changed && out != nil {
-		fmt.Fprintf(out, "demo env %-18s enabled agentic mode with %s\n", "agent", keyEnv)
+		_, _ = fmt.Fprintf(out, "demo env %-18s enabled agentic mode with %s\n", "agent", keyEnv)
 	}
 }
 

@@ -45,7 +45,7 @@ func TestWatchRetryMaxFailuresDefault(t *testing.T) {
 
 func TestWatchRunnerTransientErrorKeepsStatusActiveThenTerminates(t *testing.T) {
 	db, svc := newSQLiteWatchService(t, 20)
-	svc.conf.Core.Watches.RetryMaxFailures = 2
+	svc.conf.Watches.RetryMaxFailures = 2
 	if err := svc.initArtifactsBeforeCore(); err != nil {
 		t.Fatalf("initArtifactsBeforeCore: %v", err)
 	}

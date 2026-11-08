@@ -415,13 +415,13 @@ func runClone(ctx context.Context, opts cloneOptions, status io.Writer) (string,
 		return "", err
 	}
 	if status != nil {
-		fmt.Fprintf(status, "Cloned %d tables, %d relationships, %d saved queries from %s.\n",
+		_, _ = fmt.Fprintf(status, "Cloned %d tables, %d relationships, %d saved queries from %s.\n",
 			len(schema.Tables), len(schema.Relationships), len(schema.SavedQueries), baseURL)
 		for _, drop := range manifest.Drops {
-			fmt.Fprintf(status, "  skipped %s\n", drop)
+			_, _ = fmt.Fprintf(status, "  skipped %s\n", drop)
 		}
 		if len(unmapped) != 0 {
-			fmt.Fprintf(status, "  %d column type(s) had no mapping and became Text; see clone-manifest.json\n", len(unmapped))
+			_, _ = fmt.Fprintf(status, "  %d column type(s) had no mapping and became Text; see clone-manifest.json\n", len(unmapped))
 		}
 	}
 	return out, nil

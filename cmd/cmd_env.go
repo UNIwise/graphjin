@@ -330,18 +330,18 @@ func envServeCmd() *cobra.Command {
 				defer cancel()
 				_ = httpServer.Shutdown(shutdown)
 			}()
-			fmt.Fprintf(cmd.OutOrStdout(),
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(),
 				"GraphJin environment on %s — %d worlds, %d tasks, reward %s/%s\n",
 				listen, pool.Size(), len(server.byID), rewardProfile, gjeval.RewardVersion)
 			// One line saying what was actually resolved. A container is configured
 			// from a distance, so the log is where an operator finds out whether the
 			// suite, the holdout and the anchor are the ones they meant.
-			fmt.Fprintf(cmd.OutOrStdout(),
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(),
 				"  suite %s (%s) · split %s · side %s · anchor %s\n",
 				suiteSource, suite.Generator.Version, splitLabel, server.side,
 				orUnset(pool.instances[0].Fingerprint().DataAnchor))
 			for _, line := range fromEnv.Lines {
-				fmt.Fprintf(cmd.OutOrStdout(), "  env %s\n", line)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  env %s\n", line)
 			}
 			if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				return err
@@ -614,15 +614,15 @@ func envNewWorldCmd() *cobra.Command {
 				if err := writeWorldPackFile(out, worldPackFilename, *envelope); err != nil {
 					return err
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Saved the description to %s; rebuild with --pack.\n",
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Saved the description to %s; rebuild with --pack.\n",
 					filepath.Join(out, worldPackFilename))
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Wrote %s: %d tables, domain %s, seed %d.\n",
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Wrote %s: %d tables, domain %s, seed %d.\n",
 				out, len(world.Tables), world.Domain, world.Seed)
 			if len(applied) != 0 {
-				fmt.Fprintf(cmd.OutOrStdout(), "Deliberate pathologies: %s\n", strings.Join(applied, ", "))
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Deliberate pathologies: %s\n", strings.Join(applied, ", "))
 			}
-			fmt.Fprintf(cmd.OutOrStdout(),
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(),
 				"Next: graphjin eval create --path %s --writable --scale 300 --composition coverage\n", out)
 			return nil
 		},
@@ -738,9 +738,9 @@ func envCloneCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(),
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(),
 				"Wrote %s. Every row in it is synthetic; no data was read from the source.\n", out)
-			fmt.Fprintf(cmd.OutOrStdout(),
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(),
 				"Next: graphjin eval create --demo --path %s --writable --composition coverage\n", out)
 			return nil
 		},

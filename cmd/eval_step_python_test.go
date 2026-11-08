@@ -113,6 +113,9 @@ func trainingDir(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Skipf("the Python training harness is not part of this tree: %v", err)
+	}
 	return dir
 }
 

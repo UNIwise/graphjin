@@ -40,7 +40,7 @@ func (e *sqlExecutor) Query(ctx context.Context, stmt Statement) (ResultSet, err
 	if err != nil {
 		return ResultSet{}, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out, err := scanRows(rows)
 	if err != nil {
 		return ResultSet{}, err

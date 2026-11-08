@@ -2116,26 +2116,6 @@ func (d *MariaDBDialect) renderNestedPKSubquery(ctx Context, tableName, pkCol, f
 	}
 }
 
-// renderRecursiveWhereClauseFilters renders WHERE clause filters for recursive queries
-func (d *MariaDBDialect) renderRecursiveWhereClauseFilters(ctx Context, r InlineChildRenderer, sel *qcode.Select) {
-	if sel.Where.Exp == nil {
-		return
-	}
-
-	filters := d.collectNonRelFilters(sel.Where.Exp)
-	if len(filters) == 0 {
-		return
-	}
-
-	ctx.WriteString(` WHERE `)
-	for i, f := range filters {
-		if i != 0 {
-			ctx.WriteString(` AND `)
-		}
-		d.renderSimpleExp(ctx, sel, f)
-	}
-}
-
 // renderRecursiveWhereClauseFiltersInline renders AND clause filters for recursive queries
 // when there's already a WHERE clause present
 func (d *MariaDBDialect) renderRecursiveWhereClauseFiltersInline(ctx Context, r InlineChildRenderer, sel *qcode.Select) {
@@ -2239,26 +2219,6 @@ func (d *MariaDBDialect) renderFunctionForRecursive(ctx Context, f qcode.Field) 
 	ctx.WriteString(`)`)
 }
 
-// hasNonRelationshipFilter checks if there are filters beyond the recursive relationship
-func (d *MariaDBDialect) hasNonRelationshipFilter(exp *qcode.Exp) bool {
-	if exp == nil {
-		return false
-	}
-	// Check if this is a simple relationship filter (IsNotNull, NotEquals on __rcte)
-	if exp.Op == qcode.OpAnd {
-		// Recursive relationship filters have 3 children: IsNotNull, NotEquals, Equals
-		// If there are additional filters, we have non-relationship filters
-		nonRelCount := 0
-		for _, child := range exp.Children {
-			if !d.isRelationshipFilterExp(child) {
-				nonRelCount++
-			}
-		}
-		return nonRelCount > 0
-	}
-	return !d.isRelationshipFilterExp(exp)
-}
-
 // isRelationshipFilterExp checks if an expression is part of the recursive relationship filter
 func (d *MariaDBDialect) isRelationshipFilterExp(exp *qcode.Exp) bool {
 	if exp == nil {
@@ -2272,28 +2232,6 @@ func (d *MariaDBDialect) isRelationshipFilterExp(exp *qcode.Exp) bool {
 		return true
 	}
 	return false
-}
-
-// renderRecursiveWhereFilter renders WHERE filter excluding relationship conditions
-func (d *MariaDBDialect) renderRecursiveWhereFilter(ctx Context, r InlineChildRenderer, sel *qcode.Select, exp *qcode.Exp) {
-	if exp == nil {
-		return
-	}
-	if exp.Op == qcode.OpAnd {
-		first := true
-		for _, child := range exp.Children {
-			if d.isRelationshipFilterExp(child) {
-				continue
-			}
-			if !first {
-				ctx.WriteString(` AND `)
-			}
-			d.renderSimpleExp(ctx, sel, child)
-			first = false
-		}
-	} else if !d.isRelationshipFilterExp(exp) {
-		d.renderSimpleExp(ctx, sel, exp)
-	}
 }
 
 // renderSimpleExp renders a simple expression for recursive WHERE clause

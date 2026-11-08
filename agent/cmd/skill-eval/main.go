@@ -475,7 +475,7 @@ func runOne(client *http.Client, item task, order int) runResult {
 		result.Error = err.Error()
 		return result
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	result.HTTPStatus = response.StatusCode
 	data, err := io.ReadAll(io.LimitReader(response.Body, 8<<20))
 	if err != nil {
@@ -782,15 +782,6 @@ func axVersion() string {
 		}
 	}
 	return ""
-}
-
-func fileHash(path string) string {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
 }
 
 func readJSON[T any](path string) T {

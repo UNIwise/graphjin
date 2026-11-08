@@ -32,14 +32,14 @@ func (c *Config) featureCapabilityConfigured(kind, capability string) (bool, boo
 	if c == nil {
 		return false, false
 	}
-	return c.Core.FeatureCapabilityConfigured(kind, capability)
+	return c.FeatureCapabilityConfigured(kind, capability)
 }
 
 func (c *Config) effectiveFeatureCapability(kind, capability string) bool {
 	if c == nil || !c.agenticSurfaceEnabled() {
 		return false
 	}
-	return c.Core.FeatureCapability(kind, capability)
+	return c.FeatureCapability(kind, capability)
 }
 
 func (c *Config) sourceCapabilityForSource(source core.SourceConfig, capability string) (value bool, explicit bool) {
@@ -54,11 +54,11 @@ func (c *Config) sourceCapabilityForSource(source core.SourceConfig, capability 
 }
 
 func applySourceCapabilitySourceDefaults(conf *Config) {
-	if conf == nil || !conf.Core.IsSourcesUsed() {
+	if conf == nil || !conf.IsSourcesUsed() {
 		return
 	}
-	for i := range conf.Core.Sources {
-		source := &conf.Core.Sources[i]
+	for i := range conf.Sources {
+		source := &conf.Sources[i]
 		switch source.CanonicalKind() {
 		case sourcecap.KindCode:
 			if infer, explicit := source.Capability(sourcecap.KeyCodeInferDBRefs); explicit {
@@ -75,7 +75,7 @@ func applySourceCapabilitySourceDefaults(conf *Config) {
 }
 
 func applySourceCapabilityMCPDefaults(conf *Config) {
-	if conf == nil || !conf.Core.IsSourcesUsed() {
+	if conf == nil || !conf.IsSourcesUsed() {
 		return
 	}
 	for _, kind := range featurecap.Kinds() {

@@ -195,7 +195,7 @@ func TestSeedOperatorWatchesSkipsWhenUnavailable(t *testing.T) {
 		want    string
 	}{
 		{"no query engine", func(s *graphjinService) { s.gj = nil }, "query engine unavailable"},
-		{"watches disabled", func(s *graphjinService) { s.conf.Core.Watches.Enabled = false }, "watches are disabled"},
+		{"watches disabled", func(s *graphjinService) { s.conf.Watches.Enabled = false }, "watches are disabled"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			seed := &OperatorSeed{

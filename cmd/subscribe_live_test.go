@@ -44,25 +44,25 @@ func newLiveCLIServer(t *testing.T) (string, *sql.DB, func()) {
 		`INSERT INTO chats (id, body) VALUES (1, 'first')`,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
-			db.Close()
+			_ = db.Close()
 			t.Fatalf("exec %q: %v", stmt, err)
 		}
 	}
 
 	conf := &serv.Config{}
-	conf.Core.DBType = "sqlite"
-	conf.Core.DisableAllowList = true
-	conf.Core.SubsPollDuration = 200 * time.Millisecond
+	conf.DBType = "sqlite"
+	conf.DisableAllowList = true
+	conf.SubsPollDuration = 200 * time.Millisecond
 	conf.Serv.Production = false
-	conf.Serv.MCP.Disable = true
-	conf.Serv.ConfigPath = dir // valid base for initFS
+	conf.MCP.Disable = true
+	conf.ConfigPath = dir // valid base for initFS
 
 	hs, err := serv.NewGraphJinService(conf,
 		serv.OptionSetDB(db),
 		serv.OptionSetLogOutput(zapcore.AddSync(io.Discard)),
 	)
 	if err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("NewGraphJinService: %v", err)
 	}
 
@@ -76,7 +76,7 @@ func newLiveCLIServer(t *testing.T) (string, *sql.DB, func()) {
 
 	cleanup := func() {
 		srv.Close()
-		db.Close()
+		_ = db.Close()
 	}
 	return srv.URL, db, cleanup
 }
@@ -144,7 +144,7 @@ func TestRunSubscribeStream_LivePath(t *testing.T) {
 		case <-emitChan:
 		case <-time.After(6 * time.Second):
 			cancel()
-			<-streamErr
+			t.Logf("stream ended with: %v", <-streamErr)
 			t.Fatalf("only %d frames received within timeout (want %d): %v", len(emitted), wantFrames, emitted)
 		}
 	}

@@ -472,7 +472,7 @@ func TestAuthStoreServiceInitCreatesBlockedTable(t *testing.T) {
 	}}
 	conf.AuthLogin.Enabled = true
 	conf.ConfigPath = tmp
-	if err := conf.Core.NormalizeSources(); err != nil {
+	if err := conf.NormalizeSources(); err != nil {
 		t.Fatal(err)
 	}
 	svc := &graphjinService{conf: conf, dbs: map[string]*sql.DB{"app": db}, fs: newAferoFS(afero.NewMemMapFs(), "/")}
@@ -535,7 +535,7 @@ func TestAuthStoreServiceInitCreatesBlockedTable(t *testing.T) {
 	}
 
 	// Without the artifact store the service keeps the in-memory fallback.
-	conf.Core.Artifacts.Enabled = false
+	conf.Artifacts.Enabled = false
 	if store, err := svc.openAuthStateStore(context.Background()); err != nil || store != nil {
 		t.Fatalf("artifact store disabled: store=%v err=%v", store, err)
 	}

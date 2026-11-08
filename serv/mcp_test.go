@@ -1357,8 +1357,8 @@ func TestHandleUpdateCurrentConfig_AddResolver(t *testing.T) {
 	}
 
 	// Verify resolver was actually added to config
-	if len(ms.service.conf.Core.Resolvers) != 1 {
-		t.Fatalf("Expected 1 resolver, got %d", len(ms.service.conf.Core.Resolvers))
+	if len(ms.service.conf.Resolvers) != 1 {
+		t.Fatalf("Expected 1 resolver, got %d", len(ms.service.conf.Resolvers))
 	}
 	if ms.service.conf.Core.Resolvers[0].Name != "payments" {
 		t.Errorf("Expected resolver name 'payments', got %q", ms.service.conf.Core.Resolvers[0].Name)
@@ -1409,8 +1409,8 @@ func TestHandleUpdateCurrentConfig_UpdateResolver(t *testing.T) {
 	}
 
 	// Verify it was updated, not appended
-	if len(ms.service.conf.Core.Resolvers) != 1 {
-		t.Fatalf("Expected 1 resolver after update, got %d", len(ms.service.conf.Core.Resolvers))
+	if len(ms.service.conf.Resolvers) != 1 {
+		t.Fatalf("Expected 1 resolver after update, got %d", len(ms.service.conf.Resolvers))
 	}
 	if ms.service.conf.Core.Resolvers[0].Table != "orders" {
 		t.Errorf("Expected table 'orders' after update, got %q", ms.service.conf.Core.Resolvers[0].Table)
@@ -1454,8 +1454,8 @@ func TestHandleUpdateCurrentConfig_UpdateResolverCaseInsensitive(t *testing.T) {
 	if !strings.Contains(text, "updated resolver") {
 		t.Errorf("Expected update (not add) for case-insensitive match, got: %s", text)
 	}
-	if len(ms.service.conf.Core.Resolvers) != 1 {
-		t.Fatalf("Expected 1 resolver after case-insensitive update, got %d", len(ms.service.conf.Core.Resolvers))
+	if len(ms.service.conf.Resolvers) != 1 {
+		t.Fatalf("Expected 1 resolver after case-insensitive update, got %d", len(ms.service.conf.Resolvers))
 	}
 }
 
@@ -1493,8 +1493,8 @@ func TestHandleUpdateCurrentConfig_RemoveResolver(t *testing.T) {
 	}
 
 	// Verify only the correct resolver was removed
-	if len(ms.service.conf.Core.Resolvers) != 1 {
-		t.Fatalf("Expected 1 resolver after removal, got %d", len(ms.service.conf.Core.Resolvers))
+	if len(ms.service.conf.Resolvers) != 1 {
+		t.Fatalf("Expected 1 resolver after removal, got %d", len(ms.service.conf.Resolvers))
 	}
 	if ms.service.conf.Core.Resolvers[0].Name != "subscriptions" {
 		t.Errorf("Expected 'subscriptions' to remain, got %q", ms.service.conf.Core.Resolvers[0].Name)
@@ -1532,8 +1532,8 @@ func TestHandleUpdateCurrentConfig_RemoveResolverCaseInsensitive(t *testing.T) {
 	if !strings.Contains(text, "removed resolver") {
 		t.Errorf("Expected resolver removal with case-insensitive match, got: %s", text)
 	}
-	if len(ms.service.conf.Core.Resolvers) != 0 {
-		t.Errorf("Expected 0 resolvers after removal, got %d", len(ms.service.conf.Core.Resolvers))
+	if len(ms.service.conf.Resolvers) != 0 {
+		t.Errorf("Expected 0 resolvers after removal, got %d", len(ms.service.conf.Resolvers))
 	}
 }
 
@@ -1785,7 +1785,7 @@ func TestHandleUpdateCurrentConfig_ReadOnlyTamperProtection(t *testing.T) {
 	}
 
 	// Verify the config still has read_only: true
-	dbConf := ms.service.conf.Core.Databases["prod"]
+	dbConf := ms.service.conf.Databases["prod"]
 	if !dbConf.ReadOnly {
 		t.Error("Expected read_only to remain true after tamper attempt")
 	}

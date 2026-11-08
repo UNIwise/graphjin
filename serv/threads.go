@@ -63,7 +63,7 @@ func (s *graphjinService) threadsEnabled() bool {
 }
 
 func configThreadsEnabled(conf *Config) bool {
-	return conf != nil && conf.Core.Artifacts.Enabled && conf.Core.Threads.Enabled && conf.Agent.Lead.Enabled
+	return conf != nil && conf.Artifacts.Enabled && conf.Threads.Enabled && conf.Agent.Lead.Enabled
 }
 
 func (s *graphjinService) threadDB() (*sql.DB, string, bool) {

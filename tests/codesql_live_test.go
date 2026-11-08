@@ -208,18 +208,6 @@ func queryCodeSQLSymbol(t *testing.T, h http.Handler, name string) string {
 	return out.Data.GJCode[0].Kind
 }
 
-func postGraphQL(t *testing.T, h http.Handler, body []byte) []byte {
-	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/graphql", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	res := httptest.NewRecorder()
-	h.ServeHTTP(res, req)
-	if res.Code != http.StatusOK {
-		t.Fatalf("graphql status = %d, body = %s", res.Code, res.Body.String())
-	}
-	return res.Body.Bytes()
-}
-
 func createLiveMetadataAppDB(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "app.sqlite")
@@ -227,7 +215,7 @@ func createLiveMetadataAppDB(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`CREATE TABLE users (
 		id integer primary key,
 		email text not null unique

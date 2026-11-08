@@ -243,55 +243,6 @@ func (s *graphjinService) ensureSystemHostDBBeforeCore() error {
 	return nil
 }
 
-func (s *graphjinService) initMetadataGraphForRuntime(conf *core.Config, runtimeCore *core.Config, dbs map[string]*sql.DB, managedDBs map[string]managedDB) (string, error) {
-	if conf == nil || !s.metadataGraphEnabledForCore(conf) {
-		return "", nil
-	}
-	if runtimeCore == nil {
-		return "", fmt.Errorf("metadata runtime config is nil")
-	}
-	name := allocateRuntimeDatabaseName(internalSystemDatabaseBase, conf, runtimeCore, dbs)
-
-	dsn := fmt.Sprintf("file:graphjin_metadata_%d?mode=memory&cache=shared", time.Now().UnixNano())
-	db, err := sql.Open("sqlite", dsn)
-	if err != nil {
-		return "", err
-	}
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
-	if _, err := db.Exec(metadataSchemaSQL); err != nil {
-		db.Close() //nolint:errcheck
-		return "", fmt.Errorf("metadata schema: %w", err)
-	}
-	if err := ensureMetadataCatalogCardColumns(context.Background(), db); err != nil {
-		db.Close() //nolint:errcheck
-		return "", fmt.Errorf("metadata schema migration: %w", err)
-	}
-
-	dbs[name] = db
-	if runtimeCore.Databases == nil {
-		runtimeCore.Databases = make(map[string]core.DatabaseConfig)
-	}
-	analyticsMode := true
-	runtimeCore.Databases[name] = core.DatabaseConfig{
-		Type:          "sqlite",
-		ConnString:    dsn,
-		Path:          dsn,
-		ReadOnly:      true,
-		AnalyticsMode: &analyticsMode,
-	}
-
-	if conf.MetadataAutoCodeRelationsEnabled() {
-		codeDBs := s.selectedCodeSQLDatabasesFor(conf, managedDBs)
-		if len(codeDBs) == 1 {
-			injectMetadataCodeRelationships(runtimeCore, name, codeDBs[0])
-		} else if len(codeDBs) > 1 {
-			s.log.Warnf("metadata auto_code_relations skipped: multiple CodeSQL databases selected: %s", strings.Join(codeDBs, ", "))
-		}
-	}
-	return name, nil
-}
-
 func isMetadataStartupError(err error) bool {
 	if err == nil {
 		return false
@@ -315,7 +266,7 @@ func ensureMetadataCatalogCardColumns(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var cid int
 		var name, typ string
@@ -349,7 +300,7 @@ func (s *graphjinService) ensureRuntimeDatabaseEntries() {
 		if _, ok := s.runtimeCore.Databases[name]; ok {
 			continue
 		}
-		if conf, ok := s.conf.Core.Databases[name]; ok {
+		if conf, ok := s.conf.Databases[name]; ok {
 			s.runtimeCore.Databases[name] = conf
 			continue
 		}
@@ -434,7 +385,7 @@ var metadataCatalogTables = []string{
 }
 
 func (s *graphjinService) refreshMetadataCatalogMirror() error {
-	if s == nil || s.gj == nil || s.conf == nil || !s.conf.Core.MetadataEnabled() || s.metadataDB == "" {
+	if s == nil || s.gj == nil || s.conf == nil || !s.conf.MetadataEnabled() || s.metadataDB == "" {
 		return nil
 	}
 	db := s.dbs[s.metadataDB]
@@ -641,10 +592,6 @@ func mustMarshalString(v any) string {
 	return string(data)
 }
 
-func (s *graphjinService) injectMetadataCodeRelationships(metadataDB, codeDB string) {
-	injectMetadataCodeRelationships(s.runtimeCore, metadataDB, codeDB)
-}
-
 func injectMetadataCodeRelationships(runtimeCore *core.Config, metadataDB, codeDB string) {
 	if runtimeCore == nil {
 		return
@@ -726,10 +673,6 @@ func (s *graphjinService) selectedCodeSQLDatabasesFor(conf *core.Config, managed
 	return s.allCodeSQLDatabasesFor(conf, managedDBs)
 }
 
-func (s *graphjinService) allCodeSQLDatabases() []string {
-	return s.allCodeSQLDatabasesFor(&s.conf.Core, s.managedDBs)
-}
-
 func (s *graphjinService) allCodeSQLDatabasesFor(conf *core.Config, managedDBs map[string]managedDB) []string {
 	seen := make(map[string]struct{})
 	for name := range managedDBs {
@@ -754,10 +697,6 @@ func (s *graphjinService) allCodeSQLDatabasesFor(conf *core.Config, managedDBs m
 	}
 	sort.Strings(out)
 	return out
-}
-
-func (s *graphjinService) isConfiguredCodeSQLDatabase(name string) bool {
-	return s.isConfiguredCodeSQLDatabaseFor(name, &s.conf.Core, s.managedDBs)
 }
 
 func (s *graphjinService) isConfiguredCodeSQLDatabaseFor(name string, conf *core.Config, managedDBs map[string]managedDB) bool {

@@ -495,7 +495,7 @@ func TestRegisterTools_SourcesUsedRawGraphQLCapabilityControlsTool(t *testing.T)
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			ms := mockMcpServerWithConfig(tc.mcp)
-			ms.service.conf.Core.System.Capabilities[featurecap.KeyRawGraphQLQuery] = tc.capability
+			ms.service.conf.System.Capabilities[featurecap.KeyRawGraphQLQuery] = tc.capability
 			applySourceCapabilityMCPDefaults(ms.service.conf)
 			if ms.service.conf.MCP.AllowRawQueries != tc.wantFlag {
 				t.Fatalf("AllowRawQueries = %v, want %v", ms.service.conf.MCP.AllowRawQueries, tc.wantFlag)
@@ -518,7 +518,7 @@ func TestRegisterTools_SourcesUsedRawGraphQLCapabilityControlsTool(t *testing.T)
 
 func TestRegisterTools_CatalogToolsAreBuiltIn(t *testing.T) {
 	ms := mockMcpServerWithConfig(MCPConfig{})
-	ms.service.conf.Core.Sources = []core.SourceConfig{{Name: "app", Kind: "database"}}
+	ms.service.conf.Sources = []core.SourceConfig{{Name: "app", Kind: "database"}}
 	ms.srv = server.NewMCPServer("test", "0.0.0")
 	ms.registerTools()
 
@@ -541,8 +541,8 @@ func TestRegisterTools_CatalogToolsAreBuiltIn(t *testing.T) {
 
 func TestRegisterTools_CatalogCapabilityDisabledKeepsBootstrapAndValidation(t *testing.T) {
 	ms := mockMcpServerWithConfig(MCPConfig{})
-	ms.service.conf.Core.Mode = "dev"
-	ms.service.conf.Core.System.Capabilities[featurecap.KeyCatalogRead] = false
+	ms.service.conf.Mode = "dev"
+	ms.service.conf.System.Capabilities[featurecap.KeyCatalogRead] = false
 	ms.srv = server.NewMCPServer("test", "0.0.0")
 	ms.registerTools()
 
@@ -633,7 +633,7 @@ func TestHandleQueryCatalog_SearchWhereOrderExplain(t *testing.T) {
 
 func TestHandleQueryCatalog_NonSourcesUsesSnapshotFallback(t *testing.T) {
 	ms := workflowCatalogTestServer(t, MCPConfig{}, nil)
-	ms.service.conf.Core.Sources = nil
+	ms.service.conf.Sources = nil
 
 	res, err := ms.handleQueryCatalog(context.Background(), newToolRequest(map[string]any{
 		"where": map[string]any{"kind": map[string]any{"eq": "help"}},
@@ -777,7 +777,7 @@ func TestMCPEffectiveIdentityContextAppliesJWTAccountClaim(t *testing.T) {
 
 func TestMCPCallerCapabilityProfileReflectsSourceRootAccess(t *testing.T) {
 	ms := mockMcpServerWithConfig(MCPConfig{AllowRawQueries: true})
-	ms.service.conf.Core.Tasks.Enabled = true
+	ms.service.conf.Tasks.Enabled = true
 
 	anonProfile := ms.callerCapabilityProfile(context.Background(), false)
 	if !rootProfilesContain(anonProfile.AvailableRoots, "gj_catalog") {
@@ -833,8 +833,8 @@ func TestMCPCallerCapabilityProfileReflectsSourceRootAccess(t *testing.T) {
 	// Watches disabled by config: the roots must not be advertised, and the
 	// blocked reason must say so (not a source-mode access denial).
 	disabled := mockMcpServerWithConfig(MCPConfig{AllowRawQueries: true})
-	disabled.service.conf.Core.Watches.Enabled = false
-	disabled.service.conf.Core.Tasks.Enabled = false
+	disabled.service.conf.Watches.Enabled = false
+	disabled.service.conf.Tasks.Enabled = false
 	disabledProfile := disabled.callerCapabilityProfile(sourceModeUserTestContext(), false)
 	for _, root := range []string{"gj_watch", "gj_watch_event", "gj_task", "gj_task_entry"} {
 		if rootProfilesContain(disabledProfile.AvailableRoots, root) {
@@ -1237,7 +1237,7 @@ func TestMCPToolListMatchesRegisteredTools(t *testing.T) {
 			ms := mockMcpServerWithConfig(tc.cfg)
 			// Keep the registered surface consistent with the config used for
 			// expected: prod hard-gates MCP even with every feature flag on.
-			ms.service.conf.Core.Mode = mode
+			ms.service.conf.Mode = mode
 			ms.service.conf.Serv.Production = tc.production
 			ms.srv = server.NewMCPServer("test", "0.0.0")
 			ms.registerTools()

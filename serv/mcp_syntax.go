@@ -452,19 +452,6 @@ func (ms *mcpServer) registerResources() {
 // guidance now lives in catalog/help rows instead of standalone MCP tools.
 func (ms *mcpServer) registerSyntaxTools() {}
 
-// handleGetQuerySyntax returns the query syntax reference
-func (ms *mcpServer) handleGetQuerySyntax(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	ref := querySyntaxReference
-	if ms.analyticsModeOn() {
-		ref.AnalyticsModeRules = analyticsModeRules()
-	}
-	// Three universal query shapes (metric-by-dimension, time-series,
-	// top-N). Surfaced unconditionally — patterns are general DSL-shape
-	// guidance, not analytics-mode-specific.
-	ref.Patterns = canonicalQueryPatterns()
-	return ms.toolResultJSON("get_query_syntax", req.GetArguments(), ref)
-}
-
 // handleGetMutationSyntax returns the mutation syntax reference
 func (ms *mcpServer) handleGetMutationSyntax(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	ref := mutationSyntaxReference

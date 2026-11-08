@@ -23,9 +23,6 @@ var postgresConstraintColumnsStmt string
 //go:embed sql/mysql_info.sql
 var mysqlInfo string
 
-//go:embed sql/mysql_columns.sql
-var mysqlColumnsStmt string
-
 //go:embed sql/mysql_columns_basic.sql
 var mysqlColumnsBasicStmt string
 
@@ -58,9 +55,6 @@ var mariadbFunctionsStmt string
 
 //go:embed sql/mariadb_info.sql
 var mariadbInfo string
-
-//go:embed sql/mariadb_columns.sql
-var mariadbColumnsStmt string
 
 //go:embed sql/mariadb_columns_basic.sql
 var mariadbColumnsBasicStmt string

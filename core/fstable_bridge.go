@@ -555,7 +555,7 @@ func filesystemNeedsGlobalSort(orderBy []qcode.OrderBy) bool {
 	if len(orderBy) == 0 {
 		return false
 	}
-	return !(len(orderBy) == 1 && orderBy[0].Col.Name == "key" && !filesystemOrderDesc(orderBy[0].Order))
+	return len(orderBy) != 1 || orderBy[0].Col.Name != "key" || filesystemOrderDesc(orderBy[0].Order)
 }
 
 func pageFilesystemEntries(entries []fstable.Entry, offset, limit int) []fstable.Entry {

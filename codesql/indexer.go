@@ -145,12 +145,12 @@ func (idx *indexer) Reconcile(ctx context.Context) (*Stats, error) {
 		return nil, err
 	}
 	if err := idx.upsertLanguageMetadata(ctx); err != nil {
-		idx.finishStatus(ctx, statusID, stats, err)
+		_ = idx.finishStatus(ctx, statusID, stats, err)
 		return nil, err
 	}
 	if !idx.inferDBRefs {
 		if err := idx.clearDBRefs(ctx); err != nil {
-			idx.finishStatus(ctx, statusID, stats, err)
+			_ = idx.finishStatus(ctx, statusID, stats, err)
 			return nil, err
 		}
 	}
@@ -235,18 +235,18 @@ func (idx *indexer) Reconcile(ctx context.Context) (*Stats, error) {
 		return nil
 	})
 	if err != nil {
-		idx.finishStatus(ctx, statusID, stats, err)
+		_ = idx.finishStatus(ctx, statusID, stats, err)
 		return nil, err
 	}
 	deleted, err := idx.deleteMissing(ctx, seen)
 	if err != nil {
-		idx.finishStatus(ctx, statusID, stats, err)
+		_ = idx.finishStatus(ctx, statusID, stats, err)
 		return nil, err
 	}
 	stats.FilesDeleted = deleted
 	if idx.inferDBRefs {
 		if err := idx.linkAllDBRefs(ctx); err != nil {
-			idx.finishStatus(ctx, statusID, stats, err)
+			_ = idx.finishStatus(ctx, statusID, stats, err)
 			return nil, err
 		}
 	}
@@ -633,7 +633,7 @@ func (idx *indexer) indexFile(ctx context.Context, tx *sql.Tx, spec languageSpec
 	for _, qp := range spec.QueryPacks {
 		query, qerr := ts.NewQuery(spec.Language, qp.Source)
 		if qerr != nil {
-			return fmt.Errorf("%s query %s: %w", spec.Name, qp.Kind, qerr)
+			return fmt.Errorf("%s query %s: %w", spec.Name, qp.Kind, *qerr)
 		}
 		if err := idx.runQueryPack(ctx, tx, spec, fileID, data, nodeIDs, qp.Kind, query, root); err != nil {
 			query.Close()
@@ -875,7 +875,7 @@ func (idx *indexer) deleteMissing(ctx context.Context, seen map[string]struct{})
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var paths []string
 	for rows.Next() {
 		var p string

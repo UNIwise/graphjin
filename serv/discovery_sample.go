@@ -242,7 +242,7 @@ func directEnumProfile(ctx context.Context, db *sql.DB, dbtype string, schema *c
 	if err != nil {
 		return EnumProfile{}, false
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var prof EnumProfile
 	for rows.Next() {
@@ -286,7 +286,7 @@ func directSampleRows(ctx context.Context, db *sql.DB, dbtype string, schema *co
 			return nil, false
 		}
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]map[string]any, 0, 5)
 	for rows.Next() {
@@ -360,12 +360,12 @@ func quoteIdent(dbtype, ident string) string {
 func isPlainIdent(s string) bool {
 	for i, r := range s {
 		if i == 0 {
-			if !(r == '_' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z') {
+			if r != '_' && (r < 'A' || r > 'Z') && (r < 'a' || r > 'z') {
 				return false
 			}
 			continue
 		}
-		if !(r == '_' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9') {
+		if r != '_' && (r < 'A' || r > 'Z') && (r < 'a' || r > 'z') && (r < '0' || r > '9') {
 			return false
 		}
 	}

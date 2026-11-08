@@ -206,89 +206,6 @@ func queryCatalogToolDescription() string {
 
 // registerCatalogResources is retained as an inert compatibility hook.
 func (ms *mcpServer) registerCatalogResources() {
-	return
-
-	ms.srv.AddResource(
-		mcp.NewResource(
-			CatalogOverviewResourceURI,
-			"GraphJin Catalog Overview",
-			mcp.WithResourceDescription("AI-first catalog overview with schema, language, config, capability, and discovery entrypoints"),
-			mcp.WithMIMEType("application/json"),
-		),
-		func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-			snapshot, err := ms.catalogSnapshot(ctx)
-			if err != nil {
-				return nil, err
-			}
-			payload := CatalogOverviewResource{
-				GeneratedAt:     snapshot.GeneratedAt.Format("2006-01-02T15:04:05Z07:00"),
-				Revision:        snapshot.Revision,
-				SourceRevisions: snapshot.SourceRevisions,
-				Guidance: []string{
-					"Use query_catalog as the primary discovery surface: search for ranked text discovery, where for exact filters.",
-					"Canonical shape: {search: 'join orders customers', where: {kind: {eq: 'relationship'}}, order_by: {score: 'desc'}}.",
-					"Find reusable workflows with query_catalog(where: {kind: {eq: 'workflow'}}), then inspect metadata with query_catalog(id: 'workflow:<name>').",
-					"Use query_catalog(id: '...') to inspect evidence, examples, and graph edges for a returned item id.",
-					"Use validate_where_clause before executing filters against discovered tables and columns.",
-				},
-				Entrypoints:   snapshot.EntryPoints,
-				Capabilities:  snapshot.Capabilities,
-				Cards:         snapshot.Query(core.CatalogQuery{Limit: 100}),
-				CardLimitHint: "Overview includes the first 100 base catalog items. Use query_catalog for filtered discovery.",
-			}
-			data, err := mcpMarshalJSON(payload, true)
-			if err != nil {
-				return nil, err
-			}
-			return []mcp.ResourceContents{
-				mcp.TextResourceContents{URI: req.Params.URI, MIMEType: "application/json", Text: string(data)},
-			}, nil
-		},
-	)
-
-	ms.srv.AddResource(
-		mcp.NewResource(
-			CatalogEntrypointsResourceURI,
-			"GraphJin Catalog Entrypoints",
-			mcp.WithResourceDescription("Recommended entrypoints for navigating GraphJin catalog discovery"),
-			mcp.WithMIMEType("application/json"),
-		),
-		func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-			snapshot, err := ms.catalogSnapshot(ctx)
-			if err != nil {
-				return nil, err
-			}
-			data, err := mcpMarshalJSON(map[string]any{"entrypoints": snapshot.EntryPoints}, true)
-			if err != nil {
-				return nil, err
-			}
-			return []mcp.ResourceContents{
-				mcp.TextResourceContents{URI: req.Params.URI, MIMEType: "application/json", Text: string(data)},
-			}, nil
-		},
-	)
-
-	ms.srv.AddResource(
-		mcp.NewResource(
-			CatalogCapabilitiesResourceURI,
-			"GraphJin Catalog Capabilities",
-			mcp.WithResourceDescription("Catalog-described GraphJin capabilities, safety notes, and recommended tools"),
-			mcp.WithMIMEType("application/json"),
-		),
-		func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-			snapshot, err := ms.catalogSnapshot(ctx)
-			if err != nil {
-				return nil, err
-			}
-			data, err := mcpMarshalJSON(map[string]any{"capabilities": snapshot.Capabilities}, true)
-			if err != nil {
-				return nil, err
-			}
-			return []mcp.ResourceContents{
-				mcp.TextResourceContents{URI: req.Params.URI, MIMEType: "application/json", Text: string(data)},
-			}, nil
-		},
-	)
 }
 
 func (ms *mcpServer) catalogSnapshot(ctx context.Context) (*core.CatalogSnapshot, error) {
@@ -692,45 +609,6 @@ func helpSpec(forValue, summary, search string, kinds []string, recommended stri
 	}
 }
 
-func (ms *mcpServer) handleGetCatalogCard(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args := req.GetArguments()
-	id := stringArg(args, "id")
-	if id == "" {
-		return mcp.NewToolResultError("id is required"), nil
-	}
-
-	rows, err := ms.queryCatalogRows(ctx, catalogGraphQLQuery{
-		Where: map[string]any{"id": map[string]any{"eq": id}},
-		Limit: 1,
-	})
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	if len(rows) == 0 {
-		return mcp.NewToolResultError("catalog item not found"), nil
-	}
-	card := rows[0]
-	details, err := catalogCardDetails(card)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	edges, err := catalogCardEdges(card)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-
-	result := CatalogCardResult{
-		Card:    card,
-		Details: details,
-		Edges:   edges,
-		Next: ms.newNextGuidance("catalog_card", []NextOption{
-			nextOption("query_catalog", 1, "Search related catalog items.", "Use search plus where filters to continue discovery.", nil, []string{"search", "where", "order_by", "limit"}),
-			nextOption("validate_where_clause", 2, "Validate filters after reviewing schema/operator items.", "Use for table and filter/operator guidance.", []string{"table", "where"}, []string{"database"}),
-		}),
-	}
-	return ms.toolResultJSON("get_catalog_card", args, result)
-}
-
 func (ms *mcpServer) handleGetCatalogEntrypoints(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	rows, err := ms.queryCatalogRows(ctx, catalogGraphQLQuery{
 		Where:   map[string]any{"kind": map[string]any{"eq": "entrypoint"}},
@@ -924,7 +802,7 @@ func (s *graphjinService) filterCatalogAPIOperationsForContext(ctx context.Conte
 		case "POST", "PUT", "PATCH":
 			mutation = true
 		}
-		decision := s.conf.Core.AuthorizeOpenAPIOperation(ctx, &gjopenapi.OpDescriptor{
+		decision := s.conf.AuthorizeOpenAPIOperation(ctx, &gjopenapi.OpDescriptor{
 			SourceName: op.SourceName, OperationID: op.OperationID, Method: op.Method, AllowedRoles: op.AllowedRoles,
 		}, role)
 		if !decision.Allowed {
@@ -1350,17 +1228,6 @@ func catalogCardDetails(card CatalogItem) ([]core.CatalogCardDetail, error) {
 		return nil, fmt.Errorf("decode catalog details for %s: %w", card.ID, err)
 	}
 	return details, nil
-}
-
-func catalogCardEdges(card CatalogItem) ([]core.CatalogEdge, error) {
-	if strings.TrimSpace(card.EdgesJSON) == "" {
-		return nil, nil
-	}
-	var edges []core.CatalogEdge
-	if err := json.Unmarshal([]byte(card.EdgesJSON), &edges); err != nil {
-		return nil, fmt.Errorf("decode catalog edges for %s: %w", card.ID, err)
-	}
-	return edges, nil
 }
 
 func catalogGraphQLErrors(errs []core.Error) string {

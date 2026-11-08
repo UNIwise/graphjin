@@ -99,7 +99,7 @@ func TestSavedQueryAutoSaveUsesUserArtifactWhenConfigured(t *testing.T) {
 	svc := newArtifactOverlayTestServiceWithOptions(t, nil, core.ArtifactsConfig{
 		Enabled: true, Source: "main", AutoInit: &autoInit, GlobalsPath: ".",
 	}, func(conf *Config) {
-		conf.Core.Mode = "dev"
+		conf.Mode = "dev"
 	})
 	ctx := artifactUserCtx("user_1")
 	res, err := svc.gj.GraphQL(ctx, `query auto_users { users(order_by: { id: asc }) { id name } }`, nil, &core.RequestConfig{})
@@ -460,7 +460,7 @@ func TestArtifactProjectionLoadsPastGraphQLDefaultLimit(t *testing.T) {
 	svc := newArtifactOverlayTestServiceWithOptions(t, nil, core.ArtifactsConfig{
 		Enabled: true, Source: "main", AutoInit: &autoInit, GlobalsPath: ".",
 	}, func(conf *Config) {
-		conf.Core.DefaultLimit = 2
+		conf.DefaultLimit = 2
 	})
 	ctx := artifactUserCtx("user_1")
 	cp := newArtifactControlPlane(svc)

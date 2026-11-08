@@ -286,8 +286,8 @@ func TestApprovedAnnotationsAreSeparateAccountFilteredSemanticDocuments(t *testi
 
 func TestAnnotationApprovalEmbedsOnlyTheNewDocument(t *testing.T) {
 	svc := newArtifactOverlayTestService(t, nil)
-	svc.conf.Serv.DiscoveryCache.Path = ".graphjin/annotation-semantic-test"
-	svc.conf.Serv.CatalogSearch.Semantic = SemanticCatalogSearchConfig{
+	svc.conf.DiscoveryCache.Path = ".graphjin/annotation-semantic-test"
+	svc.conf.CatalogSearch.Semantic = SemanticCatalogSearchConfig{
 		Enabled: true, Provider: "openai", EmbeddingModel: "fake", Dimensions: "tiny",
 	}
 	client := &deterministicEmbeddingClient{dimension: 128}
@@ -341,7 +341,7 @@ func TestAnnotationTaskMustHaveSameOwner(t *testing.T) {
 	svc := newArtifactOverlayTestServiceWithOptions(t, nil, core.ArtifactsConfig{
 		Enabled: true, Source: "main", AutoInit: &autoInit, GlobalsPath: ".",
 	}, func(conf *Config) {
-		conf.Core.Tasks = core.TasksConfig{Enabled: true, MaxPerOwner: 20, MaxEntriesPerTask: 100, EntryRetentionHours: 168, SnapshotMaxBytes: 32768}
+		conf.Tasks = core.TasksConfig{Enabled: true, MaxPerOwner: 20, MaxEntriesPerTask: 100, EntryRetentionHours: 168, SnapshotMaxBytes: 32768}
 	})
 	owner := annotationAccountCtx("task_annotation_owner", "acct_1", "user")
 	other := annotationAccountCtx("task_annotation_other", "acct_1", "user")

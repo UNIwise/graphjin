@@ -15,69 +15,6 @@ type guidanceToolResult struct {
 
 // registerGuidanceTools is retained as an inert compatibility hook.
 func (ms *mcpServer) registerGuidanceTools() {
-	return
-
-	ms.srv.AddTool(mcp.NewTool(
-		"write_query",
-		mcp.WithDescription("Generate a complete GraphJin query guide as a tool result. "+
-			"Use this when the MCP client does not support prompts well and you need a starter query, schema context, and follow-up steps."),
-		mcp.WithString("table",
-			mcp.Required(),
-			mcp.Description("Primary table to query"),
-		),
-		mcp.WithString("fields",
-			mcp.Description("Fields to select (for example: 'id, name, price' or 'all')"),
-		),
-		mcp.WithString("relationships",
-			mcp.Description("Related tables to include (for example: 'owner, categories')"),
-		),
-		mcp.WithString("filter_intent",
-			mcp.Description("What to filter (for example: 'active products over $50')"),
-		),
-		mcp.WithString("pagination",
-			mcp.Description("Pagination style: 'limit' for limit/offset, 'cursor' for cursor-based"),
-		),
-		mcp.WithString("database",
-			mcp.Description("Optional database name for multi-database deployments"),
-		),
-	), ms.handleWriteQueryTool)
-
-	ms.srv.AddTool(mcp.NewTool(
-		"write_mutation",
-		mcp.WithDescription("Generate a GraphJin mutation guide as a tool result. "+
-			"Use this when the MCP client does not support prompts well and you need an insert/update/upsert/delete starter."),
-		mcp.WithString("operation",
-			mcp.Required(),
-			mcp.Description("Mutation type: insert, update, upsert, or delete"),
-		),
-		mcp.WithString("table",
-			mcp.Required(),
-			mcp.Description("Table to modify"),
-		),
-		mcp.WithString("data_intent",
-			mcp.Description("What data to modify (for example: 'create user with email and name')"),
-		),
-		mcp.WithString("nested",
-			mcp.Description("Related records to create/connect (for example: 'create order with products')"),
-		),
-		mcp.WithString("database",
-			mcp.Description("Optional database name for multi-database deployments"),
-		),
-	), ms.handleWriteMutationTool)
-
-	ms.srv.AddTool(mcp.NewTool(
-		"fix_query_error",
-		mcp.WithDescription("Analyze a GraphJin query error as a tool result. "+
-			"Use this when the MCP client does not support prompts well and you need structured repair guidance."),
-		mcp.WithString("query",
-			mcp.Required(),
-			mcp.Description("The query that produced the error"),
-		),
-		mcp.WithString("error",
-			mcp.Required(),
-			mcp.Description("The error message received"),
-		),
-	), ms.handleFixQueryErrorTool)
 }
 
 func promptRequestFromToolArgs(args map[string]any) (mcp.GetPromptRequest, error) {

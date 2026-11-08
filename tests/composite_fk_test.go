@@ -109,7 +109,7 @@ func TestCompositeFKAllRowsMatch(t *testing.T) {
 		JOIN product_variants pv ON oi.product_id = pv.product_id AND oi.variant_id = pv.variant_id
 		ORDER BY oi.id`)
 	require.NoError(t, err)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var expected []groundTruth
 	for rows.Next() {

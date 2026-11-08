@@ -71,7 +71,7 @@ func (o *oauth2CCAuth) fetch(ctx context.Context) (string, time.Duration, error)
 		}
 		return "", 0, fmt.Errorf("openapi: token endpoint %s transport error", safeEndpoint(o.cfg.TokenURL))
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	body, err := io.ReadAll(io.LimitReader(res.Body, DefaultMaxResponseBytes+1))
 	if err != nil {
@@ -163,7 +163,7 @@ func (t *tokenExchangeAuth) fetch(ctx context.Context) (string, time.Duration, e
 		}
 		return "", 0, fmt.Errorf("openapi: token endpoint %s transport error", safeEndpoint(t.cfg.TokenURL))
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	respBody, err := io.ReadAll(io.LimitReader(res.Body, DefaultMaxResponseBytes+1))
 	if err != nil {

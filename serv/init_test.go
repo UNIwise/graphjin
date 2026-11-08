@@ -10,7 +10,6 @@ import (
 	"github.com/dosco/graphjin/core/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 )
 
@@ -199,12 +198,6 @@ func TestNewDBFromDatabaseConfigHonorsPostgresTLSValidation(t *testing.T) {
 	})
 }
 
-// newTestLogger creates a no-op logger for testing
-func newTestLogger() *zap.SugaredLogger {
-	logger, _ := zap.NewDevelopment()
-	return logger.Sugar()
-}
-
 func TestSyncDBFromDatabases_MSSQL(t *testing.T) {
 	boolFalse := false
 	boolTrue := true
@@ -304,7 +297,7 @@ func TestMultiDB_MSSQLViaDatabasesConfig_ConnString(t *testing.T) {
 	}
 
 	// Simulate selecting the MSSQL database (as multi-DB init would)
-	mssqlConf := conf.Core.Databases["mssql"]
+	mssqlConf := conf.Databases["mssql"]
 
 	// Build a config as syncDBFromDatabases would for the MSSQL entry
 	mssqlServConf := &Config{}

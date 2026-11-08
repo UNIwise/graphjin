@@ -456,11 +456,6 @@ func (co *Compiler) compileArgAfterBefore(sel *Select, arg graph.Arg, pt PagingT
 	return
 }
 
-// isCursorVar checks if a variable name is a cursor variable (either "cursor" or contains "_cursor")
-func isCursorVar(name string) bool {
-	return name == "cursor" || strings.Contains(name, "_cursor")
-}
-
 func (co *Compiler) compileFieldArgs(qc *QCode, sel *Select, f *Field, args []graph.Arg, role string) (err error) {
 	for _, a := range args {
 		switch a.Name {

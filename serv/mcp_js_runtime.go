@@ -38,41 +38,10 @@ type JSRuntimeFunction struct {
 
 // registerJSRuntimeTools is retained as an inert compatibility hook.
 func (ms *mcpServer) registerJSRuntimeTools() {
-	return
-
-	ms.srv.AddTool(mcp.NewTool(
-		"get_js_runtime_api",
-		mcp.WithDescription("Get the machine-readable API for GraphJin's JS workflow runtime. "+
-			"Use this FIRST before generating JavaScript workflows so the LLM can see exactly "+
-			"which `gj.*` globals and functions are available."),
-	), ms.handleGetJSRuntimeAPI)
 }
 
 // registerJSRuntimeResources is retained as an inert compatibility hook.
 func (ms *mcpServer) registerJSRuntimeResources() {
-	return
-
-	ms.srv.AddResource(
-		mcp.NewResource(
-			JSRuntimeResourceURI,
-			"GraphJin JS Runtime API",
-			mcp.WithResourceDescription("Machine-readable API for GraphJin JS workflow runtime globals and callable functions."),
-			mcp.WithMIMEType("application/json"),
-		),
-		func(ctx context.Context, req mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-			data, err := mcpMarshalJSON(ms.buildJSRuntimeAPI(), true)
-			if err != nil {
-				return nil, err
-			}
-			return []mcp.ResourceContents{
-				mcp.TextResourceContents{
-					URI:      req.Params.URI,
-					MIMEType: "application/json",
-					Text:     string(data),
-				},
-			}, nil
-		},
-	)
 }
 
 func (ms *mcpServer) handleGetJSRuntimeAPI(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

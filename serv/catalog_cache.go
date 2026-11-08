@@ -31,7 +31,7 @@ func (s *graphjinService) catalogSnapshot() (*core.CatalogSnapshot, error) {
 	if s == nil {
 		return core.BuildCatalogSnapshot(&core.MetadataSnapshot{}, nil), nil
 	}
-	if s.conf != nil && !s.conf.Core.CatalogEnabled() {
+	if s.conf != nil && !s.conf.CatalogEnabled() {
 		return core.BuildCatalogSnapshot(&core.MetadataSnapshot{}, nil), nil
 	}
 

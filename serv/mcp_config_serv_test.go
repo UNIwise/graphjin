@@ -16,9 +16,9 @@ import (
 
 func TestServConfigMap_RedactsSecretsAndExposesSettings(t *testing.T) {
 	conf := &Config{}
-	conf.Serv.LogLevel = "info"
-	conf.Serv.Agent.Model = "gpt-test"
-	conf.Serv.Auth.JWT.Secret = "jwt-signing-secret"
+	conf.LogLevel = "info"
+	conf.Agent.Model = "gpt-test"
+	conf.Auth.JWT.Secret = "jwt-signing-secret"
 
 	m := servConfigMap(conf)
 	if m["log_level"] != "info" {
@@ -173,24 +173,24 @@ func TestHandleUpdateCurrentConfig_ServAgentPatchHotAppliesAndPersists(t *testin
 		t.Fatalf("expected serv/hot with no core strategy, got scope=%q mode=%q strategy=%q", out.Scope, out.ReloadMode, out.ReloadStrategy)
 	}
 	// Applied live to conf.Serv.
-	if got := ms.service.conf.Serv.Agent.Model; got != "gpt-hot" {
+	if got := ms.service.conf.Agent.Model; got != "gpt-hot" {
 		t.Fatalf("agent.model not applied live, got %q", got)
 	}
-	if got := ms.service.conf.Serv.Agent.MaxSteps; got != 11 {
+	if got := ms.service.conf.Agent.MaxSteps; got != 11 {
 		t.Fatalf("agent.max_steps not applied live, got %d", got)
 	}
-	if got := ms.service.conf.Serv.Agent.ResponseFormat; got != "json_object" {
+	if got := ms.service.conf.Agent.ResponseFormat; got != "json_object" {
 		t.Fatalf("agent.response_format not applied live, got %q", got)
 	}
 	// The deprecated alias still resolves to a canonical mode, so the runtime
 	// reads one value regardless of which key the operator patched.
-	if got := ms.service.conf.Serv.Agent.StructuredOutputMode; got != "json_object" {
+	if got := ms.service.conf.Agent.StructuredOutputMode; got != "json_object" {
 		t.Fatalf("legacy response_format did not resolve to a mode, got %q", got)
 	}
-	if got := ms.service.conf.Serv.Agent.ServiceTier; got != gjagent.ServiceTierFlex {
+	if got := ms.service.conf.Agent.ServiceTier; got != gjagent.ServiceTierFlex {
 		t.Fatalf("agent.service_tier not applied live, got %q", got)
 	}
-	if got := ms.service.conf.Serv.Agent.RateLimit; got.RequestsPerMinute != 25 || got.TokensPerMinute != 64000 {
+	if got := ms.service.conf.Agent.RateLimit; got.RequestsPerMinute != 25 || got.TokensPerMinute != 64000 {
 		t.Fatalf("agent.rate_limit not applied live: %+v", got)
 	}
 	if got := limiter.Config(); got.RequestsPerMinute != 25 || got.TokensPerMinute != 64000 {
@@ -226,8 +226,8 @@ func TestHandleUpdateCurrentConfig_ServRateLimiterPatchReportsRestart(t *testing
 	if out.Scope != ConfigScopeServ || out.ReloadMode != servReloadRestart || out.ReloadStrategy != "" {
 		t.Fatalf("expected serv/restart with no core strategy, got scope=%q mode=%q strategy=%q", out.Scope, out.ReloadMode, out.ReloadStrategy)
 	}
-	if ms.service.conf.Serv.RateLimiter.Rate != 42 || ms.service.conf.Serv.RateLimiter.Bucket != 7 {
-		t.Fatalf("rate_limiter not applied: %+v", ms.service.conf.Serv.RateLimiter)
+	if ms.service.conf.RateLimiter.Rate != 42 || ms.service.conf.RateLimiter.Bucket != 7 {
+		t.Fatalf("rate_limiter not applied: %+v", ms.service.conf.RateLimiter)
 	}
 }
 
@@ -243,7 +243,7 @@ func TestHandleUpdateCurrentConfig_ServPreviewReportsImpactWithoutMutating(t *te
 			serv:     map[string]any{"agent": map[string]any{"model": "preview-only"}},
 			wantMode: servReloadHot,
 			assertLive: func(t *testing.T, ms *mcpServer) {
-				if ms.service.conf.Serv.Agent.Model == "preview-only" {
+				if ms.service.conf.Agent.Model == "preview-only" {
 					t.Fatal("serv preview mutated the live agent model")
 				}
 			},
@@ -253,7 +253,7 @@ func TestHandleUpdateCurrentConfig_ServPreviewReportsImpactWithoutMutating(t *te
 			serv:     map[string]any{"rate_limiter": map[string]any{"rate": float64(73)}},
 			wantMode: servReloadRestart,
 			assertLive: func(t *testing.T, ms *mcpServer) {
-				if ms.service.conf.Serv.RateLimiter.Rate == 73 {
+				if ms.service.conf.RateLimiter.Rate == 73 {
 					t.Fatal("serv preview mutated the live rate limiter")
 				}
 			},

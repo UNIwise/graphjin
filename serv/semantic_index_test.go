@@ -322,7 +322,7 @@ func TestSemanticIndexIncrementalReuseAndWarmLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := db.Exec(`CREATE TABLE metrics (id INTEGER PRIMARY KEY, revenue NUMERIC, recorded_at TIMESTAMP)`); err != nil {
 		t.Fatal(err)
 	}

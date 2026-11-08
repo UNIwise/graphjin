@@ -42,7 +42,7 @@ const (
 
 type sub struct {
 	k  string
-	s  gstate
+	s  *gstate
 	js json.RawMessage
 
 	idgen        uint64
@@ -322,7 +322,7 @@ func (gj *graphjinEngine) subscribe(c context.Context, r GraphqlReq) (
 	for {
 		v, _ := gj.subs.LoadOrStore(k, &sub{
 			k:     k,
-			s:     s,
+			s:     &s,
 			add:   make(chan *Member),
 			del:   make(chan *Member),
 			updt:  make(chan mmsg, 10),
@@ -367,7 +367,7 @@ func (gj *graphjinEngine) subscribe(c context.Context, r GraphqlReq) (
 			cnames:     memberArgs.cnames,
 			vmap:       cloneRawMessageMap(s.vmap),
 			ident:      newSubIdentity(c),
-			roots:      subscriptionRootInfo(&sub.s, s.vmap),
+			roots:      subscriptionRootInfo(sub.s, s.vmap),
 		}
 
 		m.mm, err = gj.subFirstQuery(sub, m)
@@ -515,7 +515,7 @@ func (gj *graphjinEngine) initSub(c context.Context, sub *sub) (err error) {
 			return errors.New("subscription: request-scoped OpenAPI credentials are not supported; execute a query with fresh credentials")
 		}
 	}
-	sub.kind = gj.subscriptionKind(&sub.s)
+	sub.kind = gj.subscriptionKind(sub.s)
 
 	if gj.learn && !sub.s.trustedReservedRole {
 		err = gj.saveToAllowList(c, sub.s.cs.st.qc, sub.s.r.namespace)
@@ -1237,12 +1237,12 @@ type stringContext struct {
 	ct string
 }
 
-func (c *stringContext) Write(s string) (int, error) {
-	return c.sb.WriteString(s)
+func (c *stringContext) Write(s string) {
+	c.sb.WriteString(s)
 }
 
-func (c *stringContext) WriteString(s string) (int, error) {
-	return c.sb.WriteString(s)
+func (c *stringContext) WriteString(s string) {
+	c.sb.WriteString(s)
 }
 func (c *stringContext) AddParam(p dialect.Param) string {
 	return ""

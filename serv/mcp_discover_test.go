@@ -641,17 +641,17 @@ func TestListDatabaseNames_SQLite(t *testing.T) {
 
 	_, err = db.Exec("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
 	if err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("Failed to create table: %v", err)
 	}
 	_, err = db.Exec("CREATE TABLE orders (id INTEGER PRIMARY KEY, total REAL)")
 	if err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("Failed to create table: %v", err)
 	}
 
 	names, err := listDatabaseNames(db, "sqlite")
-	db.Close()
+	_ = db.Close()
 
 	if err != nil {
 		t.Fatalf("listDatabaseNames failed: %v", err)
@@ -684,10 +684,10 @@ func TestProbeDatabase_SQLite(t *testing.T) {
 	}
 	_, err = db.Exec("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT)")
 	if err != nil {
-		db.Close()
+		_ = db.Close()
 		t.Fatalf("Failed to create table: %v", err)
 	}
-	db.Close()
+	_ = db.Close()
 
 	// Run probeDatabase
 	discovered := &DiscoveredDatabase{

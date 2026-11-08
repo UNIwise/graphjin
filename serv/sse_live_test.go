@@ -40,7 +40,7 @@ func newLiveSSEHandler(t *testing.T) (http.Handler, *sql.DB) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	for _, stmt := range []string{
 		`CREATE TABLE chats (id INTEGER PRIMARY KEY, body TEXT)`,
@@ -137,7 +137,7 @@ func TestSSESubscription_LivePath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		got, _ := io.ReadAll(resp.Body)
@@ -249,7 +249,7 @@ func TestSSESubscription_Unauthorized(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401", resp.StatusCode)
 	}

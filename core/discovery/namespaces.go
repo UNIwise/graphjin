@@ -125,7 +125,7 @@ func snowflakeNamespaceRollup(ctx context.Context, db *sql.DB, schemas []string)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	var dbName string
 	_ = conn.QueryRowContext(ctx, "SELECT COALESCE(CURRENT_DATABASE(), '')").Scan(&dbName)
@@ -147,7 +147,7 @@ GROUP BY LOWER("schema_name")`
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []NamespaceRollup
 	for rows.Next() {
@@ -274,7 +274,7 @@ func scanNamespaceRollup(ctx context.Context, db *sql.DB, q string, rowCountsAva
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []NamespaceRollup
 	for rows.Next() {

@@ -141,10 +141,6 @@ func (c *RedisCache) modKey(table, id string) string {
 	return cachePrefix + ":" + modKeyPrefix + table + ":" + id
 }
 
-func (c *RedisCache) tableModKey(table string) string {
-	return cachePrefix + ":" + tableModPrefix + table
-}
-
 func (c *RedisCache) depKey(ref core.RowRef) string {
 	return cachePrefix + ":" + rowKeyPrefix + ref.DependencyKey()
 }

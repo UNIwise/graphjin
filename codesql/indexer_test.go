@@ -72,7 +72,7 @@ func Greet(name string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer managed.Close()
+	defer func() { _ = managed.Close() }()
 
 	if stats.FilesAdded != 1 {
 		t.Fatalf("FilesAdded = %d, want 1", stats.FilesAdded)
@@ -142,7 +142,7 @@ func TestWatcherIndexesNewFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer managed.Close()
+	defer func() { _ = managed.Close() }()
 
 	writeFile(t, filepath.Join(root, "watch.go"), `package main
 
@@ -177,7 +177,7 @@ func TestMarkdownFencesBecomeVirtualIndexedFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer managed.Close()
+	defer func() { _ = managed.Close() }()
 
 	assertCount(t, managed.DB, `SELECT count(*) FROM code_files WHERE path = 'README.md' AND language = 'markdown'`, 1)
 	assertCount(t, managed.DB, `SELECT count(*) FROM code_files WHERE path LIKE 'README.md#fence-%' AND is_virtual = 1 AND language = 'go'`, 1)
@@ -236,7 +236,7 @@ INSERT INTO users (email) VALUES ('a@example.com');
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer managed.Close()
+	defer func() { _ = managed.Close() }()
 
 	assertMinCount(t, managed.DB, `SELECT count(*) FROM code_db_refs WHERE table_key = 'app:main.users' AND resolved = 1`, 10)
 	assertCount(t, managed.DB, `SELECT count(*) FROM code_db_refs WHERE column_key = 'app:main.users.email' AND ref_kind = 'graphql'`, 1)
@@ -264,7 +264,7 @@ func TestDBRefsLeaveDuplicateTablesAmbiguous(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer managed.Close()
+	defer func() { _ = managed.Close() }()
 
 	assertCount(t, managed.DB, `SELECT count(*) FROM code_db_refs WHERE table_name = 'users' AND resolved = 0 AND ambiguous = 1 AND table_key = ''`, 1)
 }
@@ -306,7 +306,7 @@ func LookupUser() {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer managed.Close()
+	defer func() { _ = managed.Close() }()
 
 	assertCount(t, managed.DB, `SELECT count(*) FROM code_db_refs WHERE column_key = 'app:main.users.email' AND resolved = 1`, 1)
 }
@@ -342,7 +342,7 @@ func TestInferDBRefsReloadDisabledClearsStaleRefs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer managed.Close()
+	defer func() { _ = managed.Close() }()
 
 	assertCount(t, managed.DB, `SELECT count(*) FROM code_db_refs`, 0)
 }

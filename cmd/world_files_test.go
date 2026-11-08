@@ -93,10 +93,10 @@ func TestClonedProjectBootsWithWatchesAndArtifactsOn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !config.Core.Artifacts.Enabled {
+	if !config.Artifacts.Enabled {
 		t.Fatal("no artifact log: a watch has nowhere to record that it fired")
 	}
-	if !config.Core.Watches.Enabled {
+	if !config.Watches.Enabled {
 		t.Fatal("watches are off: a delivery task would wait out its timeout every episode")
 	}
 }

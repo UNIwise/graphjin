@@ -32,8 +32,8 @@ func systemRootActionEnabled(conf *Config, root, action string) bool {
 	switch root {
 	case "gj_catalog":
 		enabled := system(featurecap.KeyCatalogRead)
-		if !conf.Core.IsSourcesUsed() {
-			enabled = enabled && conf.Core.CatalogEnabled()
+		if !conf.IsSourcesUsed() {
+			enabled = enabled && conf.CatalogEnabled()
 		}
 		return action == systemActionRead && enabled
 	case "gj_security":
@@ -56,7 +56,7 @@ func systemRootActionEnabled(conf *Config, root, action string) bool {
 		}
 		return action == systemActionInsert && workflows(featurecap.KeyWorkflowExecute)
 	case "gj_artifacts":
-		if !conf.Core.Artifacts.Enabled {
+		if !conf.Artifacts.Enabled {
 			return false
 		}
 		return action == systemActionRead || !conf.artifactSourceReadOnly()
@@ -96,7 +96,7 @@ func systemRootAllowed(conf *Config, root, action, role string) bool {
 	if !systemRootActionEnabled(conf, root, action) {
 		return false
 	}
-	access := conf.Core.EffectiveSystemRootAccess()
+	access := conf.EffectiveSystemRootAccess()
 	accessMode := access[strings.ToLower(strings.TrimSpace(root))]
 	return systemRootAccessAllowed(accessMode, role, conf.Core.EffectiveIdentityConfig().AdminRoles, effectiveMode(conf), conf.DefaultBlock)
 }

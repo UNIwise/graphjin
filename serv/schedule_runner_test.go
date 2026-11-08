@@ -181,7 +181,7 @@ func newScheduleWatchReplicas(t *testing.T, count int) (*sql.DB, []*graphjinServ
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { db.Close() })
+		t.Cleanup(func() { _ = db.Close() })
 		_, svc := newSQLiteWatchServiceWithDB(t, db, dsn, 20)
 		if err := svc.initArtifactsBeforeCore(); err != nil {
 			t.Fatalf("initArtifactsBeforeCore replica %d: %v", i, err)
@@ -365,7 +365,7 @@ func TestWatchScheduleMigratesStoreWithoutScheduleColumns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	// Today's store minus the schedule columns: what every existing
 	// deployment has on disk before this change.
 	for _, stmt := range watchDDL("sqlite", "_graphjin") {
@@ -636,7 +636,7 @@ func TestScheduleWatchWebhookActionReview(t *testing.T) {
 		w.WriteHeader(http.StatusAccepted)
 	}))
 	defer hook.Close()
-	svc.conf.Core.Watches.WebhookAllow = []string{hook.URL}
+	svc.conf.Watches.WebhookAllow = []string{hook.URL}
 
 	cp := newWatchControlPlane(svc)
 	ctx := artifactUserCtx("user_1")

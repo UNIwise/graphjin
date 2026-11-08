@@ -336,6 +336,9 @@ func TestHandleUpdateCurrentConfig_SealsPlaintextSecretHydratesRuntimeAndSavesRe
 }
 
 func TestHandleUpdateCurrentConfig_ConfigSaveFailureKeepsRemovedKeystoreEntry(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the read-only config file this test relies on")
+	}
 	livePath := createSQLiteDBFile(t, "live.sqlite3", true)
 	oldPath := createSQLiteDBFile(t, "old.sqlite3", true)
 	confPath := filepath.Join(t.TempDir(), "dev.yml")
@@ -354,7 +357,7 @@ func TestHandleUpdateCurrentConfig_ConfigSaveFailureKeepsRemovedKeystoreEntry(t 
 	ms := newTransactionalConfigMCPServerWithOptions(t, livePath, false, v)
 	keystorePath := filepath.Join(t.TempDir(), "secrets.enc.yml")
 	seedKeystoreRef(t, ms, keystorePath, testKeystoreKey(8), oldRef, oldPath)
-	ms.service.conf.Core.Databases["old"] = core.DatabaseConfig{Type: "sqlite", ConnString: oldRef}
+	ms.service.conf.Databases["old"] = core.DatabaseConfig{Type: "sqlite", ConnString: oldRef}
 
 	if err := os.Chmod(confPath, 0o400); err != nil {
 		t.Fatalf("make config read-only: %v", err)
@@ -415,7 +418,7 @@ func TestHandleUpdateCurrentConfig_ConfigSaveSuccessPrunesRemovedKeystoreEntry(t
 	ms := newTransactionalConfigMCPServerWithOptions(t, livePath, false, v)
 	keystorePath := filepath.Join(t.TempDir(), "secrets.enc.yml")
 	seedKeystoreRef(t, ms, keystorePath, testKeystoreKey(9), oldRef, oldPath)
-	ms.service.conf.Core.Databases["old"] = core.DatabaseConfig{Type: "sqlite", ConnString: oldRef}
+	ms.service.conf.Databases["old"] = core.DatabaseConfig{Type: "sqlite", ConnString: oldRef}
 
 	out := applyConfigUpdate(t, ms, map[string]any{
 		"remove_databases": []any{"old"},
@@ -884,7 +887,7 @@ func createSQLiteDBFile(t *testing.T, name string, withSchema bool) string {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	if withSchema {
 		for _, stmt := range []string{
@@ -898,73 +901,6 @@ func createSQLiteDBFile(t *testing.T, name string, withSchema bool) string {
 	}
 
 	return dbPath
-}
-
-func newMetadataReloadMCPServer(t *testing.T, autoCodeRelations bool, codeDatabases []string, inferA, inferB bool) *mcpServer {
-	t.Helper()
-
-	appPath := createMetadataAppDB(t)
-	codeA := t.TempDir()
-	codeB := t.TempDir()
-	writeTestFile(t, filepath.Join(codeA, "a.go"), `package main
-
-func LookupA() {
-	query := "SELECT users.email FROM users WHERE users.id = ?"
-	_ = query
-}
-`)
-	writeTestFile(t, filepath.Join(codeB, "b.go"), `package main
-
-func LookupB() {
-	query := "SELECT users.email FROM users WHERE users.id = ?"
-	_ = query
-}
-`)
-	confPath := filepath.Join(t.TempDir(), "dev.yml")
-	if err := os.WriteFile(confPath, []byte("app_name: metadata_reload_test\n"), 0o644); err != nil {
-		t.Fatalf("write config file: %v", err)
-	}
-	v := viper.New()
-	v.SetConfigFile(confPath)
-	v.SetConfigType("yaml")
-	if err := v.ReadInConfig(); err != nil {
-		t.Fatalf("read config file: %v", err)
-	}
-
-	metadataEnabled := true
-	conf := &Config{
-		Core: core.Config{
-			DisableAllowList: true,
-			Metadata: core.MetadataConfig{
-				Enabled:           &metadataEnabled,
-				AutoCodeRelations: &autoCodeRelations,
-				CodeDatabases:     codeDatabases,
-			},
-			Databases: map[string]core.DatabaseConfig{
-				"app":    {Type: "sqlite", Path: appPath},
-				"code_a": {Type: "codesql", Path: codeA, InferDBRefs: &inferA},
-				"code_b": {Type: "codesql", Path: codeB, InferDBRefs: &inferB},
-			},
-		},
-		Serv: Serv{
-			Production: false,
-			ConfigPath: filepath.Join(t.TempDir(), "config"),
-			MCP:        MCPConfig{Disable: true},
-		},
-		viper: v,
-	}
-
-	s, err := newGraphJinService(conf, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { closeTestService(s) })
-
-	return &mcpServer{
-		service:     s,
-		ctx:         context.Background(),
-		readOnlyDBs: map[string]bool{},
-	}
 }
 
 func applyConfigUpdate(t *testing.T, ms *mcpServer, args map[string]any) ConfigUpdateResult {
@@ -1118,51 +1054,6 @@ func cloneConfigUpdateArgs(t *testing.T, args map[string]any) map[string]any {
 	return out
 }
 
-func assertMetadataCodeRefPaths(t *testing.T, s *graphjinService, want []string) {
-	t.Helper()
-
-	res, err := s.gj.GraphQL(context.Background(), `query MetadataCodeRefPaths {
-		gj_catalog(where: { kind: { eq: "column" }, table_name: { eq: "users" }, column_name: { eq: "email" } }, limit: 1) {
-			gj_code {
-				file { path }
-			}
-		}
-	}`, nil, &core.RequestConfig{})
-	if err != nil {
-		t.Fatalf("metadata GraphQL query failed: %v", err)
-	}
-	if len(res.Errors) != 0 {
-		t.Fatalf("metadata GraphQL errors: %+v", res.Errors)
-	}
-	var out struct {
-		GJCatalog []struct {
-			GJCode []struct {
-				File struct {
-					Path string `json:"path"`
-				} `json:"file"`
-			} `json:"gj_code"`
-		} `json:"gj_catalog"`
-	}
-	if err := json.Unmarshal(res.Data, &out); err != nil {
-		t.Fatalf("decode metadata GraphQL data: %v\n%s", err, string(res.Data))
-	}
-	if len(out.GJCatalog) != 1 {
-		t.Fatalf("gj_catalog len = %d, want 1: %s", len(out.GJCatalog), string(res.Data))
-	}
-	got := make([]string, 0, len(out.GJCatalog[0].GJCode))
-	for _, ref := range out.GJCatalog[0].GJCode {
-		got = append(got, ref.File.Path)
-	}
-	if len(got) != len(want) {
-		t.Fatalf("code ref paths = %v, want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("code ref paths = %v, want %v", got, want)
-		}
-	}
-}
-
 func newTransactionalConfigMCPServer(t *testing.T, dbPath string) *mcpServer {
 	return newTransactionalConfigMCPServerWithOptions(t, dbPath, true, nil)
 }
@@ -1175,7 +1066,7 @@ func newTransactionalConfigMCPServerWithOptions(t *testing.T, dbPath string, pro
 		t.Fatalf("open sqlite: %v", err)
 	}
 	t.Cleanup(func() {
-		db.Close()
+		_ = db.Close()
 	})
 
 	conf := &Config{

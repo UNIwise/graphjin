@@ -43,7 +43,7 @@ func newSampleDB(t *testing.T, ddl string, rows ...string) *sql.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	if _, err := db.Exec(ddl); err != nil {
 		t.Fatal(err)
 	}

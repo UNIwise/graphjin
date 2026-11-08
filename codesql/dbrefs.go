@@ -6,7 +6,6 @@ import (
 	"context"
 	"database/sql"
 	"regexp"
-	"sort"
 	"strings"
 	"unicode"
 )
@@ -56,7 +55,7 @@ var (
 	createTableRE   = regexp.MustCompile(`(?is)\bcreate\s+table(?:\s+if\s+not\s+exists)?\s+([A-Za-z_][\w$]*(?:(?:\.|:)[A-Za-z_][\w$]*){0,2})\s*\((.*?)\)`)
 	configNameRE    = regexp.MustCompile(`(?im)^\s*(?:-\s*)?name\s*:\s*['"]?([A-Za-z_][\w$]*)['"]?\s*$`)
 	configRelatedRE = regexp.MustCompile(`(?im)^\s*(?:-\s*)?(?:related_to|foreign_key)\s*:\s*['"]?([A-Za-z_][\w$]*(?:(?:\.|:)[A-Za-z_][\w$]*){1,3})['"]?\s*$`)
-	goStructRE      = regexp.MustCompile("(?s)type\\s+([A-Za-z_]\\w*)\\s+struct\\s*\\{(.*?)\\}")
+	goStructRE      = regexp.MustCompile(`(?s)type\s+([A-Za-z_]\w*)\s+struct\s*\{(.*?)\}`)
 	goTagRE         = regexp.MustCompile("`([^`]*)`")
 	dbTagRE         = regexp.MustCompile(`\b(?:db|json):"([^",]+)`)
 	gormColumnRE    = regexp.MustCompile(`\bgorm:"[^"]*\bcolumn:([^;"]+)`)
@@ -359,7 +358,7 @@ func (idx *indexer) linkAllDBRefs(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	type update struct {
 		id  int64
 		res dbRefResolution
@@ -669,16 +668,4 @@ func byteRowCol(s string, offset int) (int, int) {
 		}
 	}
 	return row, col
-}
-
-func sortTargets(targets []DBRefTarget) {
-	sort.Slice(targets, func(i, j int) bool {
-		if targets[i].DatabaseName != targets[j].DatabaseName {
-			return targets[i].DatabaseName < targets[j].DatabaseName
-		}
-		if targets[i].SchemaName != targets[j].SchemaName {
-			return targets[i].SchemaName < targets[j].SchemaName
-		}
-		return targets[i].TableName < targets[j].TableName
-	})
 }

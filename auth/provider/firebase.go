@@ -138,7 +138,7 @@ func firebaseKeyFunction(token *jwt.Token) (interface{}, error) {
 			}
 		}
 
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		data, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return nil, &firebaseKeyError{

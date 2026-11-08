@@ -230,7 +230,9 @@ func TestPreparationMissingAndChangedDetailsDoNotArmEvidence(t *testing.T) {
 				rt.detailRevision = "revision-2"
 			}
 			result, protocol := prepareForTest(t, newSelectionAgent(rt, selectionFactory(selectRelevant)), Request{Instruction: "show invoices"})
-			result.consume(protocol)
+			if _, err := result.consume(protocol); err != nil {
+				t.Fatal(err)
+			}
 			if len(result.stats.DetailIDs) != 0 || protocol.state.hasCatalogDetailEvidence() {
 				t.Fatal("missing/stale details became evidence")
 			}
@@ -421,7 +423,9 @@ func TestSelectionContextBudgetDoesNotArmDiscardedDetails(t *testing.T) {
 	a := newSelectionAgent(rt, selectionFactory(selectRelevant))
 	a.config.Selection.ContextBytes = 1024
 	result, protocol := prepareForTest(t, a, Request{Instruction: "show invoices"})
-	result.consume(protocol)
+	if _, err := result.consume(protocol); err != nil {
+		t.Fatal(err)
+	}
 	if result.stats.ContextBytes > 1024 || protocol.state.tablesDetailed["invoices"] {
 		t.Fatalf("oversized evidence adopted: %+v", result.stats)
 	}

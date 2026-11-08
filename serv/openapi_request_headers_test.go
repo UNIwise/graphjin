@@ -51,9 +51,9 @@ func TestOpenAPIRequestCredentialsHTTP(t *testing.T) {
 		}
 	}
 	svc := newControlPlaneGraphQLTestServiceWithConfig(t, MCPConfig{AllowRawQueries: true, AllowMutations: true}, createSourceModeHTTPDB(t), func(conf *Config) {
-		conf.Core.Roles = []core.Role{{Name: "member"}}
+		conf.Roles = []core.Role{{Name: "member"}}
 		authConfig := openapi.AuthConfig{Scheme: "bearer", TokenFromRequest: &openapi.TokenFromRequest{Header: "X-Workspace-Token"}}
-		conf.Core.Sources = append(conf.Core.Sources, core.SourceConfig{
+		conf.Sources = append(conf.Sources, core.SourceConfig{
 			Name: "workspace", Kind: "api", SpecsDir: specDir,
 			Capabilities: map[string]bool{"api.read": true, "api.write": true},
 			Access:       core.SourceAccessConfig{Read: core.AccessModeAuthenticated, Write: core.AccessModeAuthenticated},
@@ -67,9 +67,9 @@ func TestOpenAPIRequestCredentialsHTTP(t *testing.T) {
 				}},
 			},
 		})
-		conf.Serv.Auth = Auth{Type: "jwt", JWT: JWTConfig{Secret: sourceModeHTTPJWTSecret}}
-		conf.Serv.AuthFailBlock = true
-		conf.Serv.CacheControl = "public, max-age=3600"
+		conf.Auth = Auth{Type: "jwt", JWT: JWTConfig{Secret: sourceModeHTTPJWTSecret}}
+		conf.AuthFailBlock = true
+		conf.CacheControl = "public, max-age=3600"
 	})
 	cache := &personalCredentialTestCache{data: make(map[string][]byte)}
 	opts := append(svc.buildCoreOptionsFor(svc.dbs, nil), core.OptionSetResponseCache(cache))

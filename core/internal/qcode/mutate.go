@@ -197,10 +197,7 @@ func (co *Compiler) compileMutation(qc *QCode,
 	}
 	ms := mState{st: st, qc: qc, mt: mt, id: msID}
 
-	for {
-		if st.Len() == 0 {
-			break
-		}
+	for st.Len() != 0 {
 
 		intf := st.Pop()
 		item, ok := intf.(Mutate)

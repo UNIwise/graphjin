@@ -18,7 +18,7 @@ func newSQLiteThreadService(t *testing.T) *graphjinService {
 	t.Helper()
 	_, svc := newSQLiteWatchServiceWithOptions(t, 10, func(conf *Config) {
 		conf.Agent.Enabled = true
-		conf.Core.Threads = core.ThreadsConfig{Enabled: true, HistoryTurns: 12, RunLeaseSeconds: 3, MaxPerOwner: 3}
+		conf.Threads = core.ThreadsConfig{Enabled: true, HistoryTurns: 12, RunLeaseSeconds: 3, MaxPerOwner: 3}
 		conf.Agent.Lead.Enabled = true
 	})
 	if err := svc.initArtifactsBeforeCore(); err != nil {

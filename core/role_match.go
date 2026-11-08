@@ -127,7 +127,7 @@ func compareRoleValues(left, right any, op string) (bool, error) {
 		case "=":
 			return left == nil && right == nil, nil
 		case "!=":
-			return !(left == nil && right == nil), nil
+			return left != nil || right != nil, nil
 		default:
 			return false, nil
 		}
