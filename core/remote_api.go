@@ -1,40 +1,61 @@
 package core
 
 import (
+	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httputil"
 	"strings"
 
-	"github.com/dosco/graphjin/internal/jsn"
-	"github.com/mitchellh/mapstructure"
+	"github.com/dosco/graphjin/core/v3/internal/jsn"
 )
 
-// RemoteAPI struct defines a remote API endpoint
+// remoteAPI struct defines a remote API endpoint
 type remoteAPI struct {
-	URL   string
-	Debug bool
+	httpClient *http.Client
+	URL        string
+	Debug      bool
 
-	PassHeaders []string `mapstructure:"pass_headers"`
-	SetHeaders  []struct {
-		Name  string
-		Value string
-	} `mapstructure:"set_headers"`
+	PassHeaders []string
+	SetHeaders  []remoteHdrs
 }
 
-func newRemoteAPI(v map[string]interface{}) (*remoteAPI, error) {
-	ra := &remoteAPI{}
-	if err := mapstructure.Decode(v, ra); err != nil {
-		return nil, err
+type remoteHdrs struct {
+	Name  string
+	Value string
+}
+
+// newRemoteAPI creates a new remote API endpoint
+func newRemoteAPI(v map[string]interface{}, httpClient *http.Client) (*remoteAPI, error) {
+	ra := remoteAPI{
+		httpClient: httpClient,
 	}
-	return ra, nil
+
+	if v, ok := v["url"].(string); ok {
+		ra.URL = v
+	}
+	if v, ok := v["debug"].(bool); ok {
+		ra.Debug = v
+	}
+	if v, ok := v["pass_headers"].([]string); ok {
+		ra.PassHeaders = v
+	}
+	if v, ok := v["set_headers"].(map[string]string); ok {
+		for k, v1 := range v {
+			rh := remoteHdrs{Name: k, Value: v1}
+			ra.SetHeaders = append(ra.SetHeaders, rh)
+		}
+	}
+
+	return &ra, nil
 }
 
-func (r *remoteAPI) Resolve(rr ResolverReq) ([]byte, error) {
+// Resolve function resolves a remote API request
+func (r *remoteAPI) Resolve(c context.Context, rr ResolverReq) ([]byte, error) {
 	uri := strings.ReplaceAll(r.URL, "$id", rr.ID)
 
-	req, err := http.NewRequest("GET", uri, nil)
+	req, err := http.NewRequestWithContext(c, "GET", uri, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -51,13 +72,11 @@ func (r *remoteAPI) Resolve(rr ResolverReq) ([]byte, error) {
 	// 	req.Header.Set(v, hdr.Get(v))
 	// }
 
-	client := &http.Client{}
-
-	res, err := client.Do(req)
+	res, err := r.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to '%s': %v", uri, err)
 	}
-	defer res.Body.Close()
+	defer res.Body.Close() //nolint:errcheck
 
 	if r.Debug {
 		reqDump, err := httputil.DumpRequestOut(req, true)
@@ -79,7 +98,7 @@ func (r *remoteAPI) Resolve(rr ResolverReq) ([]byte, error) {
 			fmt.Errorf("server responded with a %d", res.StatusCode)
 	}
 
-	b, err := ioutil.ReadAll(res.Body)
+	b, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, err
 	}

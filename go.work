@@ -1,0 +1,19 @@
+go 1.27.3
+
+use (
+	./agent
+	./auth
+	./cassandradriver
+	./clickhousedriver
+	./cmd
+	./codesql
+	./conf
+	./core
+	./examples
+	./examples/pcb-fab/mockapi
+	./hostedemu
+	./mongodriver
+	./plugin/otel
+	./serv
+	./tests
+)

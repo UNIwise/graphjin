@@ -2,54 +2,46 @@ package core
 
 import (
 	"fmt"
-	"os"
-	"path"
 	"strings"
 	"unicode"
 
-	"github.com/dosco/graphjin/core/internal/qcode"
-	"github.com/dosco/graphjin/core/internal/sdata"
-	"github.com/gobuffalo/flect"
-	"github.com/spf13/afero"
+	"github.com/dosco/graphjin/core/v3/internal/allow"
+	"github.com/dosco/graphjin/core/v3/internal/qcode"
+	"github.com/dosco/graphjin/core/v3/internal/sdata"
 )
 
-func (gj *graphjin) initFS() error {
-	if gj.fs != nil {
-		return nil
-	}
-
-	var cpath string
-	if gj.conf.ConfigPath == "" {
-		cp, err := os.Getwd()
-		if err != nil {
-			return err
-		}
-		cpath = path.Join(cp, "config")
-	} else {
-		cpath = gj.conf.ConfigPath
-	}
-
-	gj.fs = afero.NewBasePathFs(afero.NewOsFs(), cpath)
-	return nil
-}
-
-func (gj *graphjin) initConfig() error {
+// Initializes the graphjin instance with the config
+func (gj *graphjinEngine) initConfig() error {
 	c := gj.conf
 
-	if gj.conf.EnableInflection {
-		if err := initInflection(c); err != nil {
+	if err := c.ValidateIsSourcesUsed(); err != nil {
+		return err
+	}
+	if err := c.NormalizeSources(); err != nil {
+		return err
+	}
+	if !c.IsSourcesUsed() {
+		if err := c.applyRelationshipOverlays(); err != nil {
 			return err
 		}
 	}
 
-	tm := make(map[string]struct{})
+	// Validate configuration before proceeding
+	if err := c.Validate(); err != nil {
+		return err
+	}
 
-	for _, t := range c.Tables {
-		k := strings.ToLower(t.Schema + t.Name)
-		if _, ok := tm[k]; ok {
-			return fmt.Errorf("duplicate table found: %s", t.Name)
+	// Normalize databases so the primary DB is always an entry in Databases
+	c.NormalizeDatabases()
+
+	tableMap := make(map[string]struct{})
+
+	for _, table := range c.Tables {
+		k := table.Schema + table.Name
+		if _, ok := tableMap[k]; ok {
+			return fmt.Errorf("duplicate table found: %s", table.Name)
 		}
-		tm[k] = struct{}{}
+		tableMap[k] = struct{}{}
 	}
 
 	for k, v := range c.Vars {
@@ -57,7 +49,7 @@ func (gj *graphjin) initConfig() error {
 			continue
 		}
 		if n, ok := isASCII(v); !ok {
-			return fmt.Errorf("variables: %s: invalid character (%s) at %d",
+			return fmt.Errorf("variables: %s: invalid character '%s' at %d",
 				k, c.RolesQuery[:n+1], n+1)
 		}
 	}
@@ -65,8 +57,8 @@ func (gj *graphjin) initConfig() error {
 	gj.roles = make(map[string]*Role)
 
 	for i, role := range c.Roles {
-		k := strings.ToLower(role.Name)
-		if _, ok := gj.roles[k]; ok {
+		k := role.Name
+		if _, ok := gj.roles[(role.Name)]; ok {
 			return fmt.Errorf("duplicate role found: %s", role.Name)
 		}
 
@@ -112,34 +104,27 @@ func (gj *graphjin) initConfig() error {
 	return nil
 }
 
-func initInflection(c *Config) error {
-	for _, v := range c.Inflections {
-		kv := strings.SplitN(v, ":", 2)
-		if kv[0] == "" || kv[1] == "" {
-			return fmt.Errorf("inflections: should be an array of singular:plural values: %s", v)
-		}
-		flect.AddPlural(kv[0], kv[1])
-		flect.AddSingular(kv[1], kv[0])
-	}
-	return nil
-}
-
-func addTableInfo(c *Config, t Table) error {
+// addTableInfo adds table info to the compiler
+func (gj *graphjinEngine) addTableInfo(t Table) error {
 	obm := map[string][][2]string{}
 
 	for k, ob := range t.OrderBy {
 		for _, v := range ob {
-			vals := strings.SplitN(v, " ", 2)
+			vals := strings.Fields(strings.TrimSpace(v))
+			if len(vals) != 2 {
+				return fmt.Errorf("invalid format for order by (column sort_order): %s", v)
+			}
 			obm[k] = append(obm[k], [2]string{vals[0], vals[1]})
 		}
 	}
-	if c.tmap == nil {
-		c.tmap = make(map[string]qcode.TConfig)
+	if gj.tmap == nil {
+		gj.tmap = make(map[string]qcode.TConfig)
 	}
-	c.tmap[(t.Schema + t.Name)] = qcode.TConfig{OrderBy: obm}
+	gj.tmap[(t.Schema + t.Name)] = qcode.TConfig{OrderBy: obm}
 	return nil
 }
 
+// getDBTableAliases returns a map of table aliases
 func getDBTableAliases(c *Config) map[string][]string {
 	m := make(map[string][]string, len(c.Tables))
 
@@ -153,23 +138,37 @@ func getDBTableAliases(c *Config) map[string][]string {
 	return m
 }
 
-func addTables(conf *Config, di *sdata.DBInfo) error {
+// addTables adds tables to the database info
+// targetDB is the database name to process (after normalization, all tables have Database set)
+func addTables(conf *Config, dbInfo *sdata.DBInfo, targetDB string) error {
 	var err error
 
 	for _, t := range conf.Tables {
-		// skip aliases
+		// After normalization, every table has a Database set.
+		// Only process tables matching the target database.
+		if t.Database != targetDB {
+			continue
+		}
+
+		// Aliases do not need the rest of the table metadata overlay, but their
+		// column blocklist still belongs to the underlying physical table. This
+		// is especially important for prefixed schemas where a stable GraphQL
+		// name aliases a physical table such as `legacy_orders`.
 		if t.Table != "" && t.Type == "" {
+			if err := applyTableBlocklist(dbInfo, t, t.Table); err != nil {
+				return err
+			}
 			continue
 		}
 		switch t.Type {
 		case "json", "jsonb":
-			err = addJsonTable(conf, di, t)
+			err = addJsonTable(conf, dbInfo, t)
 
 		case "polymorphic":
-			err = addVirtualTable(conf, di, t)
+			err = addVirtualTable(conf, dbInfo, t)
 
 		default:
-			err = updateTable(conf, di, t)
+			err = updateTable(conf, dbInfo, t)
 		}
 
 		if err != nil {
@@ -180,21 +179,31 @@ func addTables(conf *Config, di *sdata.DBInfo) error {
 	return nil
 }
 
-func updateTable(conf *Config, di *sdata.DBInfo, t Table) error {
-	t1, err := di.GetTable(t.Schema, t.Name)
+// updateTable updates the table info in the database info
+func updateTable(conf *Config, dbInfo *sdata.DBInfo, table Table) error {
+	// Use dbinfo's default schema if not specified in table config
+	schema := table.Schema
+	if schema == "" {
+		schema = dbInfo.Schema
+	}
+
+	t1, err := dbInfo.GetTable(schema, table.Name)
 	if err != nil {
 		return fmt.Errorf("table: %w", err)
 	}
+	if err := applyTableBlocklist(dbInfo, table, table.Name); err != nil {
+		return err
+	}
 
-	for _, c := range t.Columns {
-		c1, err := di.GetColumn(t.Schema, t.Name, c.Name)
+	for _, c := range table.Columns {
+		c1, err := dbInfo.GetColumn(schema, table.Name, c.Name)
 		if err != nil {
 			return err
 		}
 
 		if c.Primary {
 			c1.PrimaryKey = true
-			t1.PrimaryCol = *c1
+			t1.PrimaryCols = append(t1.PrimaryCols, *c1)
 		}
 
 		if c.Array {
@@ -202,45 +211,103 @@ func updateTable(conf *Config, di *sdata.DBInfo, t Table) error {
 		}
 	}
 
+	if len(t1.PrimaryCols) > 0 {
+		t1.PrimaryCol = t1.PrimaryCols[0]
+	}
+
+	if table.Partition != nil {
+		if table.Partition.None {
+			t1.PartitionNone = true
+		} else if table.Partition.Column != "" {
+			t1.PartitionKey = table.Partition.Column
+			t1.PartitionRangeDays = table.Partition.DefaultRangeDays
+		}
+	}
+
+	if table.Cassandra != nil {
+		t1.AllowFiltering = table.Cassandra.AllowFiltering
+		if len(table.Cassandra.PartitionKeys) > 0 {
+			t1.PartitionKeys = table.Cassandra.PartitionKeys
+		}
+		if len(table.Cassandra.ClusteringKeys) > 0 {
+			t1.ClusteringKeys = table.Cassandra.ClusteringKeys
+		}
+	}
+
 	return nil
 }
 
-func addJsonTable(conf *Config, di *sdata.DBInfo, t Table) error {
+func applyTableBlocklist(dbInfo *sdata.DBInfo, table Table, physicalName string) error {
+	if len(table.Blocklist) == 0 {
+		return nil
+	}
+	schema := table.Schema
+	if schema == "" {
+		schema = dbInfo.Schema
+	}
+	dbTable, err := dbInfo.GetTable(schema, physicalName)
+	if err != nil {
+		return fmt.Errorf("table blocklist: %w", err)
+	}
+	blocked := make(map[string]struct{}, len(table.Blocklist))
+	for _, name := range table.Blocklist {
+		name = strings.ToLower(strings.TrimSpace(name))
+		if name != "" {
+			blocked[name] = struct{}{}
+		}
+	}
+	for i := range dbTable.Columns {
+		if _, ok := blocked[strings.ToLower(dbTable.Columns[i].Name)]; ok {
+			dbTable.Columns[i].Blocked = true
+		}
+	}
+	return nil
+}
+
+// addJsonTable adds a json table to the database info
+func addJsonTable(conf *Config, dbInfo *sdata.DBInfo, table Table) error {
 	// This is for jsonb column that want to be a table.
-	if t.Table == "" {
-		return fmt.Errorf("json table: set the 'table' for column '%s'", t.Name)
+	if table.Table == "" {
+		return fmt.Errorf("json table: set the 'table' for column '%s'", table.Name)
 	}
 
-	bc, err := di.GetColumn(t.Schema, t.Table, t.Name)
+	bc, err := dbInfo.GetColumn(table.Schema, table.Table, table.Name)
 	if err != nil {
 		return fmt.Errorf("json table: %w", err)
 	}
 
-	bt, err := di.GetTable(bc.Schema, bc.Table)
+	bt, err := dbInfo.GetTable(bc.Schema, bc.Table)
 	if err != nil {
 		return fmt.Errorf("json table: %w", err)
 	}
 
-	if bc.Type != "json" && bc.Type != "jsonb" {
+	// Allow json, jsonb, clob, and text types
+	// MariaDB stores JSON as longtext, so we need to accept text types as well
+	validJSONTypes := map[string]bool{
+		"json": true, "jsonb": true, "clob": true,
+		"longtext": true, "text": true, "mediumtext": true,
+		"variant": true, "object": true, "array": true,
+	}
+	if !validJSONTypes[bc.Type] {
 		return fmt.Errorf(
-			"json table: column '%s' in table '%s' is of type '%s'. Only JSON or JSONB is valid",
-			t.Name, t.Table, bc.Type)
+			"json table: column '%s' in table '%s' is of type '%s'. Only JSON, JSONB, CLOB, or TEXT types are valid",
+			table.Name, table.Table, bc.Type)
 	}
 
-	columns := make([]sdata.DBColumn, 0, len(t.Columns))
+	columns := make([]sdata.DBColumn, 0, len(table.Columns))
 
-	for i := range t.Columns {
-		c := t.Columns[i]
+	for i := range table.Columns {
+		c := table.Columns[i]
 		columns = append(columns, sdata.DBColumn{
-			ID:     c.ID,
+			ID:     -1,
 			Schema: bc.Schema,
-			Table:  t.Name,
+			Table:  table.Name,
 			Name:   c.Name,
 			Type:   c.Type,
 		})
 		if c.Type == "" {
 			return fmt.Errorf("json table: type parameter missing for column: %s.%s'",
-				t.Name, c.Name)
+				table.Name, c.Name)
 		}
 	}
 
@@ -253,14 +320,15 @@ func addJsonTable(conf *Config, di *sdata.DBInfo, t Table) error {
 		Type:       bc.Type,
 	}
 
-	nt := sdata.NewDBTable(bc.Schema, t.Name, bc.Type, columns, nil, nil)
+	nt := sdata.NewDBTable(bc.Schema, table.Name, bc.Type, columns)
 	nt.PrimaryCol = col1
 	nt.SecondaryCol = bt.PrimaryCol
 
-	di.AddTable(nt)
+	dbInfo.AddTable(nt)
 	return nil
 }
 
+// addVirtualTable adds a virtual table to the database info
 func addVirtualTable(conf *Config, di *sdata.DBInfo, t Table) error {
 	if len(t.Columns) == 0 {
 		return fmt.Errorf("polymorphic table: no id column specified")
@@ -271,7 +339,7 @@ func addVirtualTable(conf *Config, di *sdata.DBInfo, t Table) error {
 		return fmt.Errorf("polymorphic table: no 'related_to' specified on id column")
 	}
 
-	s, ok := c.getFK(di.Schema)
+	fk, ok := c.getFK(di.Schema)
 	if !ok {
 		return fmt.Errorf("polymorphic table: foreign key must be <type column>.<foreign key column>")
 	}
@@ -279,15 +347,23 @@ func addVirtualTable(conf *Config, di *sdata.DBInfo, t Table) error {
 	di.VTables = append(di.VTables, sdata.VirtualTable{
 		Name:       t.Name,
 		IDColumn:   c.Name,
-		TypeColumn: s[1],
-		FKeyColumn: s[2],
+		TypeColumn: fk.Table,
+		FKeyColumn: fk.Column,
 	})
 
 	return nil
 }
 
-func addForeignKeys(conf *Config, di *sdata.DBInfo) error {
+// addForeignKeys adds foreign keys to the database info.
+// targetDB is the database name to process (after normalization, all tables have Database set).
+// allDBInfos provides access to other databases' metadata for cross-database FK resolution.
+func addForeignKeys(conf *Config, di *sdata.DBInfo, targetDB string, allDBInfos map[string]*sdata.DBInfo) error {
 	for _, t := range conf.Tables {
+		// After normalization, every table has a Database set.
+		if t.Database != targetDB {
+			continue
+		}
+
 		if t.Type == "polymorphic" {
 			continue
 		}
@@ -295,7 +371,7 @@ func addForeignKeys(conf *Config, di *sdata.DBInfo) error {
 			if c.ForeignKey == "" {
 				continue
 			}
-			if err := addForeignKey(conf, di, c, t); err != nil {
+			if err := addForeignKey(conf, di, c, t, allDBInfos); err != nil {
 				return err
 			}
 		}
@@ -303,52 +379,174 @@ func addForeignKeys(conf *Config, di *sdata.DBInfo) error {
 	return nil
 }
 
-func addForeignKey(conf *Config, di *sdata.DBInfo, c Column, t Table) error {
-	c1, err := di.GetColumn(t.Schema, t.Name, c.Name)
+// addForeignKey adds a foreign key to the database info.
+// allDBInfos is used to resolve cross-database FK references.
+func addForeignKey(conf *Config, di *sdata.DBInfo, c Column, t Table, allDBInfos map[string]*sdata.DBInfo) error {
+	// Use di.Schema as default if table schema is not specified
+	schema := t.Schema
+	if schema == "" {
+		schema = di.Schema
+	}
+	c1, err := di.GetColumn(schema, t.Name, c.Name)
 	if err != nil {
 		return fmt.Errorf("config: add foreign key: %w", err)
 	}
 
-	v, ok := c.getFK(di.Schema)
+	fk, ok := c.getFK(di.Schema)
 	if !ok {
 		return fmt.Errorf(
 			"config: invalid foreign key defined for table '%s' and column '%s': %s",
 			t.Name, c.Name, c.ForeignKey)
 	}
+	// A source prefix that names the table's own source is a same-database key.
+	if fk.Database != "" && fk.Database == t.Database {
+		fk.Database = ""
+	}
+	c1.FKeyAlias = c.relatedAs
+
+	// Cross-database FK: resolve against the target database's DBInfo
+	if fk.Database != "" {
+		targetDI, ok := allDBInfos[fk.Database]
+		if !ok {
+			return fmt.Errorf(
+				"config: foreign key for table '%s' and column '%s' references unknown database '%s'",
+				t.Name, c.Name, fk.Database)
+		}
+
+		c3, err := targetDI.GetColumn(fk.Schema, fk.Table, fk.Column)
+		if err != nil {
+			return fmt.Errorf(
+				"config: foreign key for table '%s' and column '%s' points to unknown table '%s:%s.%s' column '%s'",
+				t.Name, c.Name, fk.Database, fk.Schema, fk.Table, fk.Column)
+		}
+
+		c1.FKeyDatabase = fk.Database
+		c1.FKeySchema = fk.Schema
+		c1.FKeyTable = fk.Table
+		c1.FKeyCol = c3.Name
+		c1.FKeyIsUnique = c3.PrimaryKey || c3.UniqueKey
+		return nil
+	}
 
 	// check if it's a polymorphic foreign key
-	if _, err := di.GetColumn(t.Schema, t.Name, v[1]); err == nil {
-		c2, err := di.GetColumn(t.Schema, t.Name, v[2])
+	if _, err := di.GetColumn(schema, t.Name, fk.Table); err == nil {
+		c2, err := di.GetColumn(schema, t.Name, fk.Column)
 		if err != nil {
 			return fmt.Errorf(
 				"config: invalid column '%s' for polymorphic relationship on table '%s' and column '%s'",
-				v[2], t.Name, c.Name)
+				fk.Column, t.Name, c.Name)
 		}
 
-		c1.FKeySchema = t.Schema
-		c1.FKeyTable = v[1]
+		c1.FKeySchema = schema
+		c1.FKeyTable = fk.Table
 		c1.FKeyCol = c2.Name
 		return nil
 	}
 
-	fks, fkt, fkc := v[0], v[1], v[2]
-	c3, err := di.GetColumn(fks, fkt, fkc)
+	c3, err := di.GetColumn(fk.Schema, fk.Table, fk.Column)
 	if err != nil {
 		return fmt.Errorf(
 			"config: foreign key for table '%s' and column '%s' points to unknown table '%s.%s' and column '%s'",
-			t.Name, c.Name, fks, fkt, fkc)
+			t.Name, c.Name, fk.Schema, fk.Table, fk.Column)
 	}
 
-	c1.FKeySchema = fks
-	c1.FKeyTable = fkt
+	c1.FKeySchema = fk.Schema
+	c1.FKeyTable = fk.Table
 	c1.FKeyCol = c3.Name
+
+	// Check if this is a recursive FK (same table pointing to itself)
+	if fk.Schema == schema && fk.Table == t.Name {
+		c1.FKRecursive = true
+	}
 
 	return nil
 }
 
-func addRoles(c *Config, qc *qcode.Compiler) error {
+// addFullTextColumns applies full-text search configuration to database columns
+// targetDB is the database name to process (after normalization, all tables have Database set)
+func addFullTextColumns(conf *Config, di *sdata.DBInfo, targetDB string) error {
+	for _, t := range conf.Tables {
+		// After normalization, every table has a Database set.
+		if t.Database != targetDB {
+			continue
+		}
+		schema := t.Schema
+		if schema == "" {
+			schema = di.Schema
+		}
+		for _, c := range t.Columns {
+			if !c.FullText {
+				continue
+			}
+			col, err := di.GetColumn(schema, t.Name, c.Name)
+			if err != nil {
+				return fmt.Errorf("config: add fulltext column: %w", err)
+			}
+			col.FullText = true
+
+			// Also add to table's FullText slice
+			table, err := di.GetTable(schema, t.Name)
+			if err != nil {
+				return fmt.Errorf("config: add fulltext column: %w", err)
+			}
+			table.FullText = append(table.FullText, *col)
+		}
+	}
+	return nil
+}
+
+// addMergeOnUpdateColumns marks JSON columns whose updates merge into the
+// stored document.
+func addMergeOnUpdateColumns(conf *Config, di *sdata.DBInfo, targetDB, dbType string) error {
+	for _, t := range conf.Tables {
+		if t.Database != targetDB {
+			continue
+		}
+		schema := t.Schema
+		if schema == "" {
+			schema = di.Schema
+		}
+		for _, c := range t.Columns {
+			if !c.MergeOnUpdate {
+				continue
+			}
+			if dbType != "" && dbType != "postgres" {
+				return fmt.Errorf("config: merge_on_update on %s.%s is supported only on postgres", t.Name, c.Name)
+			}
+			col, err := di.GetColumn(schema, t.Name, c.Name)
+			if err != nil {
+				return fmt.Errorf("config: merge_on_update column: %w", err)
+			}
+			if col.Type != "jsonb" {
+				return fmt.Errorf("config: merge_on_update needs a jsonb column; %s.%s is %s", t.Name, c.Name, col.Type)
+			}
+			col.MergeOnUpdate = true
+		}
+	}
+	return nil
+}
+
+// addFunctions updates function configurations in the database info
+func addFunctions(conf *Config, di *sdata.DBInfo) error {
+	for _, f := range conf.Functions {
+		for i := range di.Functions {
+			if di.Functions[i].Name == f.Name && (f.Schema == "" || di.Functions[i].Schema == f.Schema) {
+				if f.ReturnType != "" {
+					di.Functions[i].Type = f.ReturnType
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// addRoles adds roles to the compiler
+func addRoles(c *Config, qc *qcode.Compiler, database string) error {
 	for _, r := range c.Roles {
 		for _, t := range r.Tables {
+			if t.Database != "" && database != "" && t.Database != database {
+				continue
+			}
 			if err := addRole(qc, r, t, c.DefaultBlock); err != nil {
 				return err
 			}
@@ -358,12 +556,9 @@ func addRoles(c *Config, qc *qcode.Compiler) error {
 	return nil
 }
 
+// addRole adds a role to the compiler
 func addRole(qc *qcode.Compiler, r Role, t RoleTable, defaultBlock bool) error {
-	ro := false // read-only
-
-	if defaultBlock && r.Name == "anon" {
-		ro = true
-	}
+	ro := defaultBlock && r.Name == "anon"
 
 	if t.ReadOnly {
 		ro = true
@@ -404,10 +599,10 @@ func addRole(qc *qcode.Compiler, r Role, t RoleTable, defaultBlock bool) error {
 
 	if t.Upsert != nil {
 		upsert = qcode.UpsertConfig{
-			Filters: t.Update.Filters,
-			Columns: t.Update.Columns,
-			Presets: t.Update.Presets,
-			Block:   t.Update.Block,
+			Filters: t.Upsert.Filters,
+			Columns: t.Upsert.Columns,
+			Presets: t.Upsert.Presets,
+			Block:   t.Upsert.Block,
 		}
 	}
 
@@ -428,30 +623,51 @@ func addRole(qc *qcode.Compiler, r Role, t RoleTable, defaultBlock bool) error {
 	})
 }
 
+// GetTable returns a table from the role
 func (r *Role) GetTable(schema, name string) *RoleTable {
 	return r.tm[name]
 }
 
-func (c *Column) getFK(defaultSchema string) ([3]string, bool) {
-	var ret [3]string
-	var ok bool
-
-	v := strings.SplitN(c.ForeignKey, ".", 3)
-	if len(v) == 2 {
-		ret = [3]string{defaultSchema, v[0], v[1]}
-		ok = true
-	}
-	if len(v) == 3 {
-		ret = [3]string{v[0], v[1], v[2]}
-		ok = true
-	}
-	return ret, ok
+// fkTarget holds the parsed components of a foreign key reference.
+type fkTarget struct {
+	Database string // Target database (empty = same database)
+	Schema   string
+	Table    string
+	Column   string
 }
 
+// getFK parses the foreign key reference string.
+// Supported formats:
+//   - "table.column"                  -> same db, default schema
+//   - "schema.table.column"           -> same db, explicit schema
+//   - "database:table.column"         -> cross-db, default schema
+//   - "database:schema.table.column"  -> cross-db, explicit schema
+func (c *Column) getFK(defaultSchema string) (fkTarget, bool) {
+	fk := c.ForeignKey
+
+	var database string
+	if idx := strings.IndexByte(fk, ':'); idx != -1 {
+		database = fk[:idx]
+		fk = fk[idx+1:]
+	}
+
+	v := strings.SplitN(fk, ".", 3)
+	switch len(v) {
+	case 2:
+		return fkTarget{Database: database, Schema: defaultSchema, Table: v[0], Column: v[1]}, true
+	case 3:
+		return fkTarget{Database: database, Schema: v[0], Table: v[1], Column: v[2]}, true
+	default:
+		return fkTarget{}, false
+	}
+}
+
+// sanitize trims the value
 func sanitize(value string) string {
-	return strings.ToLower(strings.TrimSpace(value))
+	return strings.TrimSpace(value)
 }
 
+// isASCII checks if the string is ASCII
 func isASCII(s string) (int, bool) {
 	for i := 0; i < len(s); i++ {
 		if s[i] > unicode.MaxASCII {
@@ -459,4 +675,17 @@ func isASCII(s string) (int, bool) {
 		}
 	}
 	return -1, true
+}
+
+// initAllowList initializes the allow list
+func (gj *graphjinEngine) initAllowList() (err error) {
+	gj.allowList, err = allow.New(
+		gj.log,
+		gj.fs,
+		gj.conf.DisableAllowList) // if true then read only
+	if err != nil {
+		return fmt.Errorf("failed to initialize allow list: %w", err)
+	}
+
+	return nil
 }

@@ -3,100 +3,137 @@ name: Build
 on:
   push:
     branches: [master]
-    tags: ["v*"]
     paths-ignore: ["**.md", "docs/**"]
-
   pull_request:
     branches: [master]
     paths-ignore: ["**.md", "docs/**"]
+  workflow_dispatch: {}
+
+# Read-only token, no secrets and GitHub-hosted runners only: nothing here publishes
+# or deploys. Releases and image pushes are not part of this repository's workflows.
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.27.3"
+  GOLANGCI_LINT_VERSION: v2.15.0
+  GOFLAGS: -buildvcs=false
 
 jobs:
-  linter:
-    name: lint
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          version: v1.37
-          args: --timeout=10m
-
-  releaser:
-    needs: linter
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-
-      - name: Set up Snapcraft
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          sudo apt-get update
-          sudo apt-get -yq --no-install-suggests --no-install-recommends install snapcraft
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.17"
+          go-version: ${{ env.GO_VERSION }}
 
-      - name: Cache Go modules
-        uses: actions/cache@v2.1.4
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          install-only: true
 
-      - name: Run Postgres Tests
-        run: go test -v -timeout 30m ./...
-
-      - name: Run MySQL Tests
-        working-directory: ./core
+      - name: Lint every module
         run: |
-          go test -v -timeout 30m -db=mysql -run=Example_query
-          go test -v -timeout 30m -db=mysql -run=Example_sub
+          status=0
+          for dir in $(find . -name go.mod -exec dirname {} \; | sort); do
+            echo "===> Linting module: $dir"
+            (cd "$dir" && golangci-lint run --timeout=10m) || status=1
+          done
+          exit $status
 
-      - name: Snapcraft Login
-        if: success() && startsWith(github.ref, 'refs/tags/v')
-        env:
-          SNAPCRAFT_CREDS: ${{ secrets.SNAPCRAFT_LOGIN }}
-        run: |
-          snapcraft login --with <(echo "$SNAPCRAFT_CREDS")
-
-      - name: Import GPG key
-        if: success() && startsWith(github.ref, 'refs/tags/v')
-        id: import_gpg
-        uses: crazy-max/ghaction-import-gpg@v3
-        with:
-          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
-          passphrase: ${{ secrets.GPG_PASSPHRASE }}
-
-      - name: Run GoReleaser
-        if: success() && startsWith(github.ref, 'refs/tags/v')
-        uses: goreleaser/goreleaser-action@v2
-        with:
-          version: latest
-          args: release --rm-dist
-        env:
-          GITHUB_TOKEN: ${{ secrets.GR_TOKEN }}
-          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
-
-  publish:
-    needs: releaser
-    if: startsWith(github.ref, 'refs/tags/v')
+  test:
+    name: Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
-
-      - name: Update version in package.json
-        run: |
-          sudo apt-get install jq
-          jq '.version = $newVal' --arg newVal ${GITHUB_REF/refs\/tags\/v/} package.json > tmp.$$.json && mv tmp.$$.json package.json
-
-      - uses: JS-DevTools/npm-publish@v1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: ${{ secrets.NPM_TOKEN }}
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      # ./tests is the database-backed suite; it runs in the integration job below,
+      # one database at a time. Without -db it would start every database container.
+      - name: Test every module
+        run: |
+          status=0
+          for dir in $(find . -name go.mod -not -path './tests/*' -exec dirname {} \; | sort); do
+            echo "===> Testing module: $dir"
+            (cd "$dir" && go test ./...) || status=1
+          done
+          exit $status
+
+  integration:
+    name: Integration (${{ matrix.db }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - db: postgres
+            tags: ""
+          - db: mysql
+            tags: mysql
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      # The suite starts the database in a container (Docker is available on the runner).
+      - name: Run the ${{ matrix.db }} suite
+        working-directory: tests
+        run: go test -timeout 8m -count=1 -db=${{ matrix.db }} -tags "${{ matrix.tags }}" .
+
+  scan:
+    name: Vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Scan the source tree
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          path: .
+          fail-build: true
+          severity-cutoff: high
+          output-format: table
+
+  image:
+    name: Image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Lint the Dockerfile
+        run: docker run --rm -i hadolint/hadolint:v2.15.1-alpine hadolint --failure-threshold warning - < Dockerfile
+
+      - name: Build the image
+        run: docker build --pull -t graphjin:ci .

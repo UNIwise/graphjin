@@ -2,8 +2,6 @@ package graph
 
 import (
 	"testing"
-
-	"github.com/chirino/graphql/schema"
 )
 
 var gql = []byte(`
@@ -48,13 +46,19 @@ fragment userFields2 on user {
 	first_name
 	last_name
 	__typename
-}`)
+	}`)
+
+func TestParseAllowsReservedWordsInStringValues(t *testing.T) {
+	if _, err := Parse([]byte(`query { gj_catalog(where: { kind: { eq: "fragment" } }) { id } }`)); err != nil {
+		t.Fatalf("parse query with reserved string value: %v", err)
+	}
+}
 
 func BenchmarkParse(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {
-		_, err := Parse(gql, nil)
+		_, err := Parse(gql)
 
 		if err != nil {
 			b.Fatal(err)
@@ -68,7 +72,7 @@ func BenchmarkParseP(b *testing.B) {
 
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_, err := Parse(gql, nil)
+			_, err := Parse(gql)
 
 			if err != nil {
 				b.Fatal(err)
@@ -81,38 +85,10 @@ func BenchmarkParseFragment(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for n := 0; n < b.N; n++ {
-		_, err := Parse(gqlWithFragments, nil)
+		_, err := Parse(gqlWithFragments)
 
 		if err != nil {
 			b.Fatal(err)
 		}
 	}
-}
-
-func BenchmarkSchemaParse(b *testing.B) {
-
-	b.ResetTimer()
-	b.ReportAllocs()
-	for n := 0; n < b.N; n++ {
-		doc := schema.QueryDocument{}
-		err := doc.Parse(string(gql))
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-func BenchmarkSchemaParseP(b *testing.B) {
-	b.ResetTimer()
-	b.ReportAllocs()
-
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			doc := schema.QueryDocument{}
-			err := doc.Parse(string(gql))
-			if err != nil {
-				b.Fatal(err)
-			}
-		}
-	})
 }
