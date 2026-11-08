@@ -1,59 +1,74 @@
 package sdata
 
 import (
-	"database/sql"
+	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"regexp"
+	"sort"
 	"strings"
-
-	"github.com/mitchellh/hashstructure/v2"
-	"golang.org/x/sync/errgroup"
 )
 
+// DBInfo holds the database schema information
 type DBInfo struct {
 	Type    string
 	Version int
 	Schema  string
 	Name    string
 
-	Tables    []DBTable      `hash:"set"`
-	Functions []DBFunction   `hash:"set"`
-	VTables   []VirtualTable `hash:"set"`
-	colMap    map[string]int `hash:"-"`
-	tableMap  map[string]int `hash:"-"`
-	hash      uint64         `hash:"-"`
+	Tables       []DBTable
+	Functions    []DBFunction
+	VTables      []VirtualTable    `json:"-"`
+	CompositeFKs []CompositeFKInfo `json:"-"`
+	colMap       map[string]int
+	tableMap     map[string]int
+	hash         int
 }
 
-type DBIndices map[string][]DBColumnIndex
-
+// DBTable holds the database table information
 type DBTable struct {
-	Schema       string
-	Name         string
-	Type         string
-	Columns      []DBColumn `hash:"set"`
-	PrimaryCol   DBColumn
-	SecondaryCol DBColumn
-	FullText     []DBColumn `hash:"set"`
-	Blocked      bool
-	colMap       map[string]int `hash:"-"`
-	IndexColumns DBIndices
-	Indices      DBIndices
-}
-
-type DBIndexTable struct {
-	Columns DBIndices
-	Indices DBIndices
-}
-
-type DBColumnIndex struct {
+	Comment    string
 	Schema     string
-	Constraint string
-	Table      string
+	Name       string
+	OrigName   string // Original name before normalization (e.g., PascalCase for MSSQL)
+	OrigSchema string // Original schema before normalization
 	Type       string
-	Column     string
-	Composite  bool
+	// Database is the name of the database this table belongs to (for multi-database support).
+	// Empty string means the default database.
+	Database    string
+	Columns     []DBColumn
+	PrimaryCols []DBColumn
+	// UniqueIndices holds the column set of every unique and primary key index.
+	// Only MySQL and MariaDB fill it; elsewhere the per-column flags are used.
+	UniqueIndices        [][]string
+	PrimaryCol           DBColumn // backward compat: alias for PrimaryCols[0]
+	SecondaryCol         DBColumn
+	FullText             []DBColumn
+	Blocked              bool
+	Func                 DBFunction
+	ClusteringKeys       []string          // Warehouse clustering key columns (normalized to snake_case)
+	ClusteringOrder      map[string]string // Cassandra clustering column -> asc|desc
+	PartitionKeys        []string          // Cassandra composite partition key columns (in order)
+	AllowFiltering       bool              // Cassandra: per-table ALLOW FILTERING opt-in
+	PartitionKey         string            // Partition column name (from config, e.g., "created_at")
+	PartitionRangeDays   int               // Default range in days for auto-injected partition filter (0 = warn only)
+	PartitionNone        bool
+	ImplicitPartitionKey string
+	// StrictColumns marks Columns as the table's complete surface: selecting
+	// a column not in the list is a compile error instead of the lenient
+	// pass-through remote tables get by default. Set by integrations whose
+	// column set is closed (filesystem tables); OpenAPI and user-resolver
+	// tables leave it false because their registered columns may be partial
+	// or absent entirely.
+	StrictColumns bool
+	colMap        map[string]int
+
+	// Args lists synthetic field-level arguments (used for top-level
+	// remote tables that take query/path params as GraphQL args).
+	Args []DBColumn
 }
 
+// VirtualTable holds the virtual table information
 type VirtualTable struct {
 	Name       string
 	IDColumn   string
@@ -61,78 +76,7 @@ type VirtualTable struct {
 	FKeyColumn string
 }
 
-type st struct {
-	schema, table string
-}
-
-func GetDBInfo(
-	db *sql.DB,
-	dbType string,
-	blockList []string) (*DBInfo, error) {
-
-	var dbVersion int
-	var dbSchema, dbName string
-	var cols []DBColumn
-	var funcs []DBFunction
-	var tableIndices map[string]DBIndexTable
-	var err error
-
-	g := errgroup.Group{}
-
-	g.Go(func() error {
-		var row *sql.Row
-		switch dbType {
-		case "mysql":
-			row = db.QueryRow(mysqlInfo)
-		default:
-			row = db.QueryRow(postgresInfo)
-		}
-
-		if err := row.Scan(&dbVersion, &dbSchema, &dbName); err != nil {
-			return err
-		}
-		return nil
-	})
-
-	g.Go(func() error {
-		var err error
-		if cols, err = DiscoverColumns(db, dbType, blockList); err != nil {
-			return err
-		}
-
-		if funcs, err = DiscoverFunctions(db, blockList); err != nil {
-			return err
-		}
-
-		if tableIndices, err = DiscoverIndices(db); err != nil {
-			return err
-		}
-		return nil
-	})
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	di := NewDBInfo(
-		dbType,
-		dbVersion,
-		dbSchema,
-		dbName,
-		cols,
-		funcs,
-		tableIndices,
-		blockList,
-	)
-
-	di.hash, err = hashstructure.Hash(di, hashstructure.FormatV2, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return di, nil
-}
-
+// NewDBInfo returns a new DBInfo object
 func NewDBInfo(
 	dbType string,
 	dbVersion int,
@@ -140,9 +84,8 @@ func NewDBInfo(
 	dbName string,
 	cols []DBColumn,
 	funcs []DBFunction,
-	tableIndices map[string]DBIndexTable,
-	blockList []string) *DBInfo {
-
+	blockList []string,
+) *DBInfo {
 	di := &DBInfo{
 		Type:      dbType,
 		Version:   dbVersion,
@@ -153,17 +96,23 @@ func NewDBInfo(
 		tableMap:  make(map[string]int),
 	}
 
+	type st struct {
+		database string
+		schema   string
+		table    string
+	}
+
 	tm := make(map[st][]DBColumn)
-	for i := range cols {
-		c := cols[i]
+	for i, c := range cols {
 		di.colMap[(c.Schema + ":" + c.Table + ":" + c.Name)] = i
 
-		k1 := st{c.Schema, c.Table}
-		tm[k1] = append(tm[k1], c)
+		k := st{c.Database, c.Schema, c.Table}
+		tm[k] = append(tm[k], c)
 	}
 
 	for k, tcols := range tm {
-		ti := NewDBTable(k.schema, k.table, "", tcols, tableIndices[k.table].Columns, tableIndices[k.table].Indices)
+		ti := NewDBTable(k.schema, k.table, "", tcols)
+		ti.Database = k.database
 		if strings.HasPrefix(ti.Name, "_gj_") {
 			continue
 		}
@@ -171,34 +120,115 @@ func NewDBInfo(
 		di.AddTable(ti)
 	}
 
+	for _, f := range funcs {
+		if f.Type != "record" || len(f.Outputs) == 0 {
+			continue
+		}
+
+		var cols []DBColumn
+		for _, v := range f.Outputs {
+			cols = append(cols, DBColumn{
+				ID:   int32(v.ID),
+				Name: v.Name,
+				Type: v.Type,
+			})
+		}
+		t := NewDBTable(f.Schema, f.Name, "function", cols)
+		t.Func = f
+		di.AddTable(t)
+	}
+
+	// Hash discovery input, before config adds virtual tables or alters metadata.
+	// Discovery order and synthetic column IDs are not schema changes.
+	h := fnv.New64a()
+	enc := json.NewEncoder(h)
+	_ = enc.Encode([]any{dbType, dbVersion, dbSchema, dbName})
+	entries := make([]string, 0, len(cols)+len(funcs))
+	for _, c := range cols {
+		c.ID = 0
+		data, _ := json.Marshal(c)
+		entries = append(entries, "column:"+string(data))
+	}
+	for _, f := range funcs {
+		data, _ := json.Marshal(f)
+		entries = append(entries, "function:"+string(data))
+	}
+	sort.Strings(entries)
+	_ = enc.Encode(entries)
+	di.hash = int(h.Sum64() & uint64(^uint(0)>>1))
 	return di
 }
 
-func NewDBTable(schema, name, _type string, cols []DBColumn, columnIndices map[string][]DBColumnIndex, indices map[string][]DBColumnIndex) DBTable {
+// NewDBTable returns a new DBTable object
+func NewDBTable(schema, name, _type string, cols []DBColumn) DBTable {
 	ti := DBTable{
-		Schema:       schema,
-		Name:         name,
-		Type:         _type,
-		Columns:      cols,
-		colMap:       make(map[string]int, len(cols)),
-		IndexColumns: columnIndices,
-		Indices:      indices,
+		Schema:  schema,
+		Name:    name,
+		Type:    _type,
+		Columns: cols,
+		colMap:  make(map[string]int, len(cols)),
+	}
+
+	// Propagate original table/schema names from the first column (MSSQL)
+	if len(cols) > 0 && cols[0].OrigTable != "" {
+		ti.OrigName = cols[0].OrigTable
+		ti.OrigSchema = cols[0].OrigSchema
 	}
 
 	for i, c := range cols {
+		cols[i].Schema = schema
+		cols[i].Table = name
+
 		switch {
 		case c.FullText:
 			ti.FullText = append(ti.FullText, c)
 
 		case c.PrimaryKey:
-			ti.PrimaryCol = c
+			ti.PrimaryCols = append(ti.PrimaryCols, c)
 
 		}
 		ti.colMap[c.Name] = i
 	}
+	if len(ti.PrimaryCols) > 0 {
+		ti.PrimaryCol = ti.PrimaryCols[0]
+	}
 	return ti
 }
 
+// HasCompositePK returns true if the table has a multi-column primary key.
+func (t *DBTable) HasCompositePK() bool {
+	return len(t.PrimaryCols) > 1
+}
+
+// PKColNames returns the names of all primary key columns.
+func (t *DBTable) PKColNames() []string {
+	names := make([]string, len(t.PrimaryCols))
+	for i, c := range t.PrimaryCols {
+		names[i] = c.Name
+	}
+	return names
+}
+
+// IsPKCol returns true if the named column is part of the primary key.
+func (t *DBTable) IsPKCol(name string) bool {
+	for _, c := range t.PrimaryCols {
+		if c.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// GetColumnIndex returns the index of a column in the table by name, and whether it was found.
+func (t *DBTable) GetColumnIndex(name string) (int, bool) {
+	if t.colMap == nil {
+		return 0, false
+	}
+	i, ok := t.colMap[name]
+	return i, ok
+}
+
+// AddTable adds a table to the DBInfo object
 func (di *DBInfo) AddTable(t DBTable) {
 	for i, c := range t.Columns {
 		di.colMap[(c.Schema + ":" + c.Table + ":" + c.Name)] = i
@@ -209,6 +239,26 @@ func (di *DBInfo) AddTable(t DBTable) {
 	di.tableMap[(t.Schema + ":" + t.Name)] = i
 }
 
+// AddColumn adds a column to an existing table and updates the lookup maps.
+func (di *DBInfo) AddColumn(schema, table string, c DBColumn) error {
+	t, err := di.GetTable(schema, table)
+	if err != nil {
+		return err
+	}
+	if _, ok := t.colMap[c.Name]; ok {
+		return nil
+	}
+	c.Schema = schema
+	c.Table = table
+	c.ID = int32(len(t.Columns) + 1)
+	i := len(t.Columns)
+	t.Columns = append(t.Columns, c)
+	t.colMap[c.Name] = i
+	di.colMap[(schema + ":" + table + ":" + c.Name)] = i
+	return nil
+}
+
+// GetTable returns a table from the DBInfo object
 func (di *DBInfo) GetColumn(schema, table, column string) (*DBColumn, error) {
 	t, err := di.GetTable(schema, table)
 	if err != nil {
@@ -223,6 +273,7 @@ func (di *DBInfo) GetColumn(schema, table, column string) (*DBColumn, error) {
 	return &t.Columns[cid], nil
 }
 
+// GetTable returns a table from the DBInfo object
 func (di *DBInfo) GetTable(schema, table string) (*DBTable, error) {
 	tid, ok := di.tableMap[(schema + ":" + table)]
 	if !ok {
@@ -232,185 +283,97 @@ func (di *DBInfo) GetTable(schema, table string) (*DBTable, error) {
 	return &di.Tables[tid], nil
 }
 
+// DBColumn returns the column as a string
 type DBColumn struct {
-	ID         int32
-	Name       string
-	Type       string
-	Array      bool
-	NotNull    bool
-	PrimaryKey bool
-	UniqueKey  bool
-	FullText   bool
-	FKeySchema string
-	FKeyTable  string
-	FKeyCol    string
-	Blocked    bool
-	Table      string
-	Schema     string
+	Comment        string
+	ID             int32
+	Name           string
+	OrigName       string // Original name before normalization (e.g., PascalCase for MSSQL)
+	Type           string
+	Array          bool
+	NotNull        bool
+	PrimaryKey     bool
+	UniqueKey      bool
+	FullText       bool
+	MergeOnUpdate  bool
+	FKRecursive    bool
+	FKeyDatabase   string // Target database for cross-database FKs (empty = same db)
+	FKeySchema     string
+	FKeyTable      string
+	FKeyCol        string
+	FKeyIsUnique   bool   // True if FK target column is PK/unique (for correct rel type)
+	FKeyAlias      string // Extra field name for the relationship, from config `as`
+	Blocked        bool
+	Table          string
+	Schema         string
+	Database       string
+	Default        string
+	Index          bool
+	IndexName      string
+	FKOnDelete     string
+	FKOnUpdate     string
+	CodeSQLVirtual string
+
+	// Original names before normalization (used to build dialect name maps for MSSQL)
+	OrigTable      string
+	OrigSchema     string
+	OrigFKeyTable  string
+	OrigFKeySchema string
+	OrigFKeyCol    string
 }
 
-func DiscoverColumns(db *sql.DB, dbtype string, blockList []string) ([]DBColumn, error) {
-	var sqlStmt string
-
-	switch dbtype {
-	case "mysql":
-		sqlStmt = mysqlColumnsStmt
-	default:
-		sqlStmt = postgresColumnsStmt
-	}
-
-	rows, err := db.Query(sqlStmt)
-	if err != nil {
-		return nil, fmt.Errorf("error fetching columns: %s", err)
-	}
-	defer rows.Close()
-
-	cmap := make(map[string]DBColumn)
-
-	for rows.Next() {
-		var c DBColumn
-
-		err = rows.Scan(&c.Schema, &c.Table, &c.Name, &c.Type, &c.NotNull, &c.PrimaryKey, &c.UniqueKey, &c.Array, &c.FullText, &c.FKeySchema, &c.FKeyTable, &c.FKeyCol)
-
-		if err != nil {
-			return nil, err
-		}
-
-		k := (c.Schema + ":" + c.Table + ":" + c.Name)
-		v, ok := cmap[k]
-		if !ok {
-			v = c
-			v.ID = int32(len(cmap))
-			if strings.HasPrefix(v.Table, "_gj_") {
-				continue
-			}
-			v.Blocked = isInList(v.Name, blockList)
-		}
-		if c.Type != "" {
-			v.Type = c.Type
-		}
-		if c.PrimaryKey {
-			v.PrimaryKey = true
-			v.UniqueKey = true
-		}
-		if c.NotNull {
-			v.NotNull = true
-		}
-		if c.UniqueKey {
-			v.UniqueKey = true
-		}
-		if c.Array {
-			v.Array = true
-		}
-		if c.FullText {
-			v.FullText = true
-		}
-		if c.FKeySchema != "" {
-			v.FKeySchema = c.FKeySchema
-		}
-		if c.FKeyTable != "" {
-			v.FKeyTable = c.FKeyTable
-		}
-		if c.FKeyCol != "" {
-			v.FKeyCol = c.FKeyCol
-		}
-		cmap[k] = v
-	}
-
-	var cols []DBColumn
-	for _, c := range cmap {
-		cols = append(cols, c)
-	}
-
-	return cols, nil
+// ColPair represents a column pair in a composite foreign key relationship.
+type ColPair struct {
+	L DBColumn // Local column
+	R DBColumn // Referenced (foreign) column
 }
 
+// CompositeFKInfo holds metadata about a composite (multi-column) foreign key constraint.
+type CompositeFKInfo struct {
+	Schema         string
+	Table          string
+	ConstraintName string
+	LocalCols      []string
+	FKeySchema     string
+	FKeyTable      string
+	FKeyCols       []string
+}
+
+// DBFunction holds the database function information
 type DBFunction struct {
-	Name   string
-	Params []DBFuncParam
+	Comment string
+	Schema  string
+	Name    string
+	Type    string
+	Agg     bool
+	Inputs  []DBFuncParam
+	Outputs []DBFuncParam
 }
 
+// DBFuncParam holds the database function parameter information
 type DBFuncParam struct {
-	ID   int
-	Name sql.NullString
-	Type string
+	ID    int
+	Name  string
+	Type  string
+	Array bool
 }
 
-func DiscoverIndices(db *sql.DB) (map[string]DBIndexTable, error) {
-	rows, err := db.Query(mysqlIndexInfoStmt)
-	if err != nil {
-		return nil, fmt.Errorf("error fetching index info: %s", err)
-	}
-	defer rows.Close()
-
-	dbIndexTables := make(map[string]DBIndexTable)
-
-	for rows.Next() {
-		var ci DBColumnIndex
-		ci.Composite = false
-		err = rows.Scan(&ci.Schema, &ci.Constraint, &ci.Table, &ci.Type, &ci.Column)
-		if err != nil {
-			return nil, err
+// GetInput returns the input of a function
+func (fn *DBFunction) GetInput(name string) (ret DBFuncParam, err error) {
+	for _, in := range fn.Inputs {
+		if in.Name == name {
+			return in, nil
 		}
-
-		if _, ok := dbIndexTables[ci.Table]; !ok {
-			dbIndexTables[ci.Table] = DBIndexTable{
-				Columns: make(DBIndices),
-				Indices: make(DBIndices),
-			}
-		}
-
-		dbIndexTables[ci.Table].Indices[ci.Constraint] = append(dbIndexTables[ci.Table].Indices[ci.Constraint], ci)
-		dbIndexTables[ci.Table].Columns[ci.Column] = append(dbIndexTables[ci.Table].Columns[ci.Column], ci)
 	}
-
-	return dbIndexTables, nil
+	return ret, fmt.Errorf("function input '%s' not found", name)
 }
 
-func DiscoverFunctions(db *sql.DB, blockList []string) ([]DBFunction, error) {
-	rows, err := db.Query(functionsStmt)
-	if err != nil {
-		return nil, fmt.Errorf("Error fetching functions: %s", err)
-	}
-	defer rows.Close()
-
-	var funcs []DBFunction
-	fm := make(map[string]int)
-
-	parameterIndex := 1
-	for rows.Next() {
-		var fn, fid string
-		fp := DBFuncParam{}
-
-		err = rows.Scan(&fn, &fid, &fp.Type, &fp.Name, &fp.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		if !fp.Name.Valid {
-			fp.Name.String = fmt.Sprintf("%d", parameterIndex)
-			fp.Name.Valid = true
-		}
-
-		if i, ok := fm[fid]; ok {
-			funcs[i].Params = append(funcs[i].Params, fp)
-		} else {
-			if isInList(fn, blockList) {
-				continue
-			}
-			funcs = append(funcs, DBFunction{Name: fn, Params: []DBFuncParam{fp}})
-			fm[fid] = len(funcs) - 1
-		}
-		parameterIndex++
-	}
-
-	return funcs, nil
-}
-
-func (di *DBInfo) Hash() uint64 {
+// Hash returns the hash of the DBInfo object
+func (di *DBInfo) Hash() int {
 	return di.hash
 }
 
+// isInList checks if a value is in a list
 func isInList(val string, s []string) bool {
 	for _, v := range s {
 		regex := fmt.Sprintf("^%s$", v)
@@ -419,4 +382,66 @@ func isInList(val string, s []string) bool {
 		}
 	}
 	return false
+}
+
+var implicitPartitionCandidates = []string{
+	"created_at",
+	"event_time",
+	"updated_at",
+	"timestamp",
+	"ingested_at",
+}
+
+func resolveImplicitPartitionKey(t *DBTable) string {
+	for _, cand := range implicitPartitionCandidates {
+		for i := range t.Columns {
+			if strings.EqualFold(t.Columns[i].Name, cand) && isTemporalType(t.Columns[i].Type) {
+				return t.Columns[i].Name
+			}
+		}
+	}
+	return ""
+}
+
+// isTemporalType returns true if the column type string represents a
+// date or timestamp type across common database dialects.
+func isTemporalType(colType string) bool {
+	t := strings.ToLower(colType)
+	switch {
+	case strings.Contains(t, "timestamp"):
+		return true
+	case strings.Contains(t, "datetime"):
+		return true
+	case t == "date":
+		return true
+	case strings.HasPrefix(t, "timestamp_"):
+		// Snowflake: TIMESTAMP_LTZ, TIMESTAMP_NTZ, TIMESTAMP_TZ
+		return true
+	default:
+		return false
+	}
+}
+
+// SQLName returns the discovered physical column name, preserving its casing.
+func (c DBColumn) SQLName() string {
+	if c.OrigName != "" {
+		return c.OrigName
+	}
+	return c.Name
+}
+
+// SQLName returns the discovered physical table name.
+func (t DBTable) SQLName() string {
+	if t.OrigName != "" {
+		return t.OrigName
+	}
+	return t.Name
+}
+
+// SQLSchema returns the discovered physical schema name.
+func (t DBTable) SQLSchema() string {
+	if t.OrigSchema != "" {
+		return t.OrigSchema
+	}
+	return t.Schema
 }

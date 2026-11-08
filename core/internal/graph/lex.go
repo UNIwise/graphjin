@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strconv"
 	"unicode"
+	"unicode/utf16"
 	"unicode/utf8"
 )
 
 var (
+	typeToken         = []byte("type")
 	queryToken        = []byte("query")
 	mutationToken     = []byte("mutation")
 	fragmentToken     = []byte("fragment")
@@ -45,7 +48,7 @@ const (
 	itemEOF                     // end of file
 	itemName                    // label
 	itemOn                      // "on"
-	itemPunctuator              // punctuation !():=[]{|}
+	itemPunctuator              // punctuation !()[]{}:=
 	itemArgsOpen                // (
 	itemArgsClose               // )
 	itemListOpen                // [
@@ -54,6 +57,7 @@ const (
 	itemObjClose                // }
 	itemColon                   // :
 	itemEquals                  // =
+	itemRequired                // !
 	itemDirective               // @(directive)
 	itemVariable                // $variable
 	itemSpread                  // ...
@@ -62,8 +66,9 @@ const (
 	itemBoolVal                 // boolean
 )
 
-// !$():=@[]{|}
+// !()[]{}:=
 var punctuators = map[rune]MType{
+	'!': itemRequired,
 	'{': itemObjOpen,
 	'}': itemObjClose,
 	'[': itemListOpen,
@@ -76,8 +81,8 @@ var punctuators = map[rune]MType{
 
 const eof = -1
 
-// stateFn represents the state of the scanner as a function that returns the next state.
-type stateFn func(*lexer) stateFn
+// StateFn represents the state of the scanner as a function that returns the next state.
+type StateFn func(*lexer) StateFn
 
 // lexer holds the state of the scanner.
 type lexer struct {
@@ -93,6 +98,7 @@ type lexer struct {
 
 var zeroLex = lexer{}
 
+// Reset resets the lexer to scan a new input string.
 func (l *lexer) Reset() {
 	*l = zeroLex
 }
@@ -130,13 +136,14 @@ func (l *lexer) backup() {
 	}
 }
 
+// current returns the current bytes of the input.
 func (l *lexer) current() []byte {
 	return l.input[l.start:l.pos]
 }
 
 // emit passes an item back to the client.
 func (l *lexer) emit(t MType) {
-	l.items = append(l.items, item{t, l.start, l.current(), l.line})
+	value := l.current()
 	// Some items contain text internally. If so, count their newlines.
 	if t == itemStringVal {
 		for i := l.start; i < l.pos; i++ {
@@ -144,13 +151,68 @@ func (l *lexer) emit(t MType) {
 				l.line++
 			}
 		}
+		// lexString only tracks escapes well enough to find the closing quote; the
+		// raw slice still carries them. GraphQL string values are escaped text, so
+		// a value must be unescaped here or a consumer sees a literal backslash.
+		// This mattered for gj_watch: an embedded subscription filter written
+		// correctly as eq: \"failed\" reached the subscription parser as eq:
+		// \"failed\" and failed with `unrecognized character in action: U+005C`.
+		value = unescapeStringValue(value)
 	}
+	l.items = append(l.items, item{t, l.start, value, l.line})
 	l.start = l.pos
 }
 
-func (l *lexer) emitL(t MType) {
-	lowercase(l.current())
-	l.emit(t)
+// unescapeStringValue resolves GraphQL string escape sequences. It allocates
+// only when an escape is present, so ordinary values keep pointing at the input
+// buffer. An unrecognized escape keeps both characters rather than guessing.
+func unescapeStringValue(value []byte) []byte {
+	if bytes.IndexByte(value, '\\') == -1 {
+		return value
+	}
+	out := make([]byte, 0, len(value))
+	for i := 0; i < len(value); i++ {
+		if value[i] != '\\' || i+1 >= len(value) {
+			out = append(out, value[i])
+			continue
+		}
+		i++
+		switch value[i] {
+		case '"', '\\', '/', '\'':
+			out = append(out, value[i])
+		case 'b':
+			out = append(out, '\b')
+		case 'f':
+			out = append(out, '\f')
+		case 'n':
+			out = append(out, '\n')
+		case 'r':
+			out = append(out, '\r')
+		case 't':
+			out = append(out, '\t')
+		case 'u':
+			if i+4 < len(value) {
+				if r, err := strconv.ParseUint(string(value[i+1:i+5]), 16, 32); err == nil {
+					if r >= 0xD800 && r <= 0xDBFF && i+10 < len(value) &&
+						value[i+5] == '\\' && value[i+6] == 'u' {
+						if low, err := strconv.ParseUint(string(value[i+7:i+11]), 16, 32); err == nil &&
+							low >= 0xDC00 && low <= 0xDFFF {
+							out = utf8.AppendRune(out, utf16.DecodeRune(rune(r), rune(low)))
+							i += 10
+							continue
+						}
+					}
+					out = utf8.AppendRune(out, rune(r))
+					i += 4
+					continue
+				}
+			}
+			out = append(out, '\\', value[i])
+		default:
+			out = append(out, '\\', value[i])
+		}
+	}
+	return out
 }
 
 // ignore skips over the pending input before this point.
@@ -159,13 +221,13 @@ func (l *lexer) ignore() {
 }
 
 // accept consumes the next rune if it's from the valid set.
-func (l *lexer) accept(valid []byte) bool {
+func (l *lexer) accept(valid []byte) (rune, bool) {
 	r := l.next()
 	if r != eof && bytes.ContainsRune(valid, r) {
-		return true
+		return r, true
 	}
 	l.backup()
-	return false
+	return r, false
 }
 
 // acceptAlphaNum consumes a run of runes while they are alpha nums
@@ -196,7 +258,7 @@ func (l *lexer) acceptRun(valid []byte) {
 
 // errorf returns an error token and terminates the scan by passing
 // back a nil pointer that will be the next state, terminating l.nextItem.
-func (l *lexer) errorf(format string, args ...interface{}) stateFn {
+func (l *lexer) errorf(format string, args ...interface{}) StateFn {
 	l.err = fmt.Errorf(format, args...)
 	l.items = append(l.items, item{itemError, l.start, l.input[l.start:l.pos], l.line})
 	return nil
@@ -230,7 +292,7 @@ func (l *lexer) run() {
 }
 
 // lexInsideAction scans the elements inside action delimiters.
-func lexRoot(l *lexer) stateFn {
+func lexRoot(l *lexer) StateFn {
 	r := l.next()
 
 	switch {
@@ -248,6 +310,9 @@ func lexRoot(l *lexer) stateFn {
 	case r == '@':
 		l.ignore()
 		l.emit(itemDirective)
+	case r == '!':
+		l.ignore()
+		l.emit(itemRequired)
 	case r == '$':
 		l.ignore()
 		if l.acceptAlphaNum() {
@@ -257,8 +322,6 @@ func lexRoot(l *lexer) stateFn {
 	case contains(l.current(), punctuatorToken):
 		if item, ok := punctuators[r]; ok {
 			l.emit(item)
-		} else {
-			l.emit(itemPunctuator)
 		}
 	case r == '"' || r == '\'':
 		l.backup()
@@ -283,14 +346,9 @@ func lexRoot(l *lexer) stateFn {
 }
 
 // lexName scans a name.
-func lexName(l *lexer) stateFn {
+func lexName(l *lexer) StateFn {
 	for {
 		r := l.next()
-
-		if r == eof {
-			l.emit(itemEOF)
-			return nil
-		}
 
 		if !isAlphaNumeric(r) {
 			l.backup()
@@ -298,11 +356,11 @@ func lexName(l *lexer) stateFn {
 
 			switch {
 			case equals(val, onToken):
-				l.emitL(itemOn)
+				l.emit(itemOn)
 			case equals(val, trueToken):
-				l.emitL(itemBoolVal)
+				l.emit(itemBoolVal)
 			case equals(val, falseToken):
-				l.emitL(itemBoolVal)
+				l.emit(itemBoolVal)
 			default:
 				l.emit(itemName)
 			}
@@ -313,23 +371,31 @@ func lexName(l *lexer) stateFn {
 }
 
 // lexString scans a string.
-func lexString(l *lexer) stateFn {
-	if l.accept([]byte(quotesToken)) {
+func lexString(l *lexer) StateFn {
+	if sr, ok := l.accept([]byte(quotesToken)); ok {
 		l.ignore()
 
+		var escaped bool
 		for {
 			r := l.next()
 			if r == eof {
 				l.emit(itemEOF)
 				return nil
 			}
-			if r == '\'' || r == '"' {
+			if r == '\\' {
+				escaped = !escaped
+				continue
+			}
+			if !escaped && r == sr {
 				l.backup()
 				l.emit(itemStringVal)
-				if l.accept(quotesToken) {
+				if _, ok := l.accept(quotesToken); ok {
 					l.ignore()
 				}
 				break
+			}
+			if escaped {
+				escaped = false
 			}
 		}
 	}
@@ -339,7 +405,7 @@ func lexString(l *lexer) stateFn {
 // lexNumber scans a number: decimal and float. This isn't a perfect number scanner
 // for instance it accepts "." and "0x0.2" and "089" - but when it's wrong the input
 // is invalid and the parser (via strconv) should notice.
-func lexNumber(l *lexer) stateFn {
+func lexNumber(l *lexer) StateFn {
 	if !l.scanNumber() {
 		return l.errorf("bad number syntax: %q", l.input[l.start:l.pos])
 	}
@@ -347,15 +413,36 @@ func lexNumber(l *lexer) stateFn {
 	return lexRoot
 }
 
+// scanNumber scans a number: decimal and float.
 func (l *lexer) scanNumber() bool {
 	// Optional leading sign.
 	l.accept(signsToken)
+	integerStart := l.pos
 	l.acceptRun(digitToken)
-	if l.accept(dotToken) {
+	integerEnd := l.pos
+	hasInteger := integerEnd > integerStart
+	exponent := false
+	if _, ok := l.accept(dotToken); ok {
 		l.acceptRun(digitToken)
 	}
-	// Is it imaginary?
-	l.accept([]byte("i"))
+	if _, ok := l.accept([]byte("eE")); ok {
+		exponent = true
+		if !hasInteger || l.input[l.start] == '+' ||
+			(integerEnd-integerStart > 1 && l.input[integerStart] == '0') ||
+			l.input[l.pos-2] == '.' {
+			return false
+		}
+		l.accept(signsToken)
+		start := l.pos
+		l.acceptRun(digitToken)
+		if start == l.pos {
+			return false
+		}
+	}
+	// Preserve the existing imaginary-number extension for non-exponent values.
+	if !exponent {
+		l.accept([]byte("i"))
+	}
 	// Next thing mustn't be alphanumeric.
 	if isAlphaNumeric(l.peek()) {
 		l.next()
@@ -366,7 +453,7 @@ func (l *lexer) scanNumber() bool {
 
 // isSpace reports whether r is a space character.
 func isSpace(r rune) bool {
-	return r == ',' || r == ' ' || r == '\t'
+	return r == ',' || r == ' ' || r == '\t' || r == '\uFEFF'
 }
 
 // isEndOfLine reports whether r is an end-of-line character.
@@ -379,14 +466,17 @@ func isAlphaNumeric(r rune) bool {
 	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
 }
 
+// equals reports whether b is equal to val.
 func equals(b, val []byte) bool {
 	return bytes.EqualFold(b, val)
 }
 
+// contains reports whether b contains any of the chars.
 func contains(b []byte, chars string) bool {
 	return bytes.ContainsAny(b, chars)
 }
 
+// lowercase lowercases the bytes in b.
 func lowercase(b []byte) {
 	for i := 0; i < len(b); i++ {
 		if b[i] >= 'A' && b[i] <= 'Z' {
@@ -395,6 +485,7 @@ func lowercase(b []byte) {
 	}
 }
 
+// String returns a string representation of the item.
 func (i item) String() string {
 	var v string
 

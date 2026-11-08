@@ -1,35 +1,32 @@
 package core
 
 import (
-	"fmt"
+	"context"
 	"time"
 
-	"github.com/bep/debounce"
-	"github.com/dosco/graphjin/core/internal/sdata"
-	"github.com/fsnotify/fsnotify"
+	"github.com/dosco/graphjin/core/v3/internal/introspection"
 )
 
+// initDBWatcher initializes the database schema watcher
 func (g *GraphJin) initDBWatcher() error {
-	gj := g.Load().(*graphjin)
-
-	// no schema polling in production unless allowlist is disabled
-	if gj.prod && !gj.conf.DisableAllowList {
+	gj := g.Load().(*graphjinEngine)
+	if gj.disableDBSchemaWatcher {
 		return nil
 	}
 
-	if gj.conf.DisableDBWatcher {
+	// no schema polling in production
+	if gj.prod {
 		return nil
 	}
 
-	var ps time.Duration
+	ps := gj.conf.DBSchemaPollDuration
 
-	switch d := gj.conf.DBSchemaPollDuration; {
-	case d < 0:
+	switch {
+	case ps < (1 * time.Second):
 		return nil
-	case d < 5:
+
+	case ps < (5 * time.Second):
 		ps = 10 * time.Second
-	default:
-		ps = d * time.Second
 	}
 
 	go func() {
@@ -38,86 +35,69 @@ func (g *GraphJin) initDBWatcher() error {
 	return nil
 }
 
+// startDBWatcher starts the database schema watcher
 func (g *GraphJin) startDBWatcher(ps time.Duration) {
 	ticker := time.NewTicker(ps)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		gj := g.Load().(*graphjin)
-
-		dbinfo, err := sdata.GetDBInfo(
-			gj.db,
-			gj.dbtype,
-			gj.conf.Blocklist)
-
-		if err != nil {
-			gj.log.Println(err)
-			continue
+	for {
+		select {
+		case <-g.done:
+			return
+		case <-ticker.C:
 		}
 
-		if dbinfo.Hash() == gj.dbinfo.Hash() {
-			continue
+		gj := g.Load().(*graphjinEngine)
+
+		needsReload := false
+
+		// Check all databases for schema changes
+		for _, ctx := range gj.databases {
+			if ctx.db == nil {
+				continue
+			}
+
+			latestDi, err := introspection.GetDBInfo(
+				context.Background(),
+				ctx.db,
+				ctx.dbtype,
+				gj.conf.Blocklist)
+			if err != nil {
+				gj.log.Printf("database %s: schema poll error: %v", ctx.name, err)
+				continue
+			}
+
+			// Check if we're waiting for tables (schema is nil)
+			if ctx.schema == nil {
+				if len(latestDi.Tables) > 0 {
+					gj.log.Printf("database %s: tables discovered, reinitializing...", ctx.name)
+					needsReload = true
+					break
+				}
+				continue
+			}
+
+			// Normal operation - check for schema changes
+			if latestDi.Hash() != ctx.dbinfo.Hash() {
+				gj.log.Printf("database %s: schema change detected, reinitializing...", ctx.name)
+				needsReload = true
+				break
+			}
 		}
 
-		gj.log.Println("database change detected. reinitializing...")
-
-		if err := g.Reload(); err != nil {
-			gj.log.Println(err)
+		if needsReload {
+			g.reloadMu.Lock()
+			// Re-check after lock — another reload may have already updated the engine
+			gj = g.Load().(*graphjinEngine)
+			pdb := gj.primaryDB()
+			if pdb != nil {
+				if err := g.newGraphJin(gj.conf, pdb.db, nil, gj.fs, gj.opts...); err != nil {
+					gj.log.Println(err)
+				} else {
+					g.fireAllSchemaCallbacks()
+				}
+			}
+			g.reloadMu.Unlock()
 		}
 	}
-}
-
-func (g *GraphJin) initFSWatcher() error {
-	gj := g.Load().(*graphjin)
-
-	go func() {
-		watcher, err := fsnotify.NewWatcher()
-		if err != nil {
-			gj.log.Printf("Error during watcher initialization: %s", err)
-			return
-		}
-
-		watchPaths := []string{
-			gj.conf.ConfigPath,
-			fmt.Sprintf("%s/fragments/", gj.conf.ConfigPath),
-			fmt.Sprintf("%s/queries/", gj.conf.ConfigPath),
-			fmt.Sprintf("%s/scripts/", gj.conf.ConfigPath),
-		}
-
-		for _, path := range watchPaths {
-			err = watcher.Add(path)
-			if err != nil {
-				gj.log.Printf("Failed adding watch path: %s", path)
-				return
-			}
-		}
-
-		invokeReload := func() {
-			gj.log.Println("Reloading config due to one or more file changes...")
-			err = g.Reload()
-			if err != nil {
-				gj.log.Println("Failed to reload config during FS change: ", err)
-			}
-		}
-
-		debounced := debounce.New(10 * time.Second)
-
-		for {
-			select {
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-				gj.log.Printf("%s %s\n", event.Name, event.Op)
-				debounced(invokeReload)
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-				gj.log.Println("error:", err)
-			}
-		}
-	}()
-
-	return nil
 }

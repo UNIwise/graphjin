@@ -1,38 +1,40 @@
 {
   "name": "graphjin",
-  "version": "",
-  "description": "GraphJin - Build APIs in 5 minutes with GraphQL. An instant GraphQL to SQL compiler.",
-  "main": "index.js",
-  "directories": {
-    "doc": "docs",
-    "example": "examples"
+  "version": "3.21.19",
+  "description": "GraphJin — one governed graph for AI agents: GraphQL + MCP over your databases, files, APIs, and code",
+  "bin": {
+    "graphjin": "bin/graphjin.js"
   },
+  "files": [
+    "./bin"
+  ],
   "scripts": {
-    "postinstall": "go-npm install",
-    "preuninstall": "go-npm uninstall"
+    "postinstall": "node ./bin/install.js",
+    "website:dev": "npm --prefix website run dev",
+    "website:build": "npm --prefix website run build",
+    "website:index": "npm --prefix website run index"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/dosco/graphjin.git"
   },
   "keywords": [
+    "graphql",
+    "sql",
+    "database",
+    "api",
+    "cli",
     "postgres",
     "mysql",
-    "graphql",
-    "sql"
+    "mcp"
   ],
-  "author": "Vikram (https://twitter.com/dosco)",
+  "author": "Vikram <https://twitter.com/dosco>",
   "license": "Apache-2.0",
   "bugs": {
     "url": "https://github.com/dosco/graphjin/issues"
   },
-  "homepage": "https://github.com/dosco/graphjin#readme",
-  "goBinary": {
-    "name": "graphjin",
-    "path": "./bin",
-    "url": "https://github.com/dosco/graphjin/releases/download/v{{version}}/graphjin_{{version}}_{{platform}}_{{arch}}.tar.gz"
-  },
+  "homepage": "https://graphjin.com",
   "dependencies": {
-    "go-npm": "^0.1.9"
+    "tar": "^7.0.0"
   }
 }

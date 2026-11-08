@@ -19,7 +19,6 @@ func simpleInsert(t *testing.T) {
 	compileGQLToPSQL(t, gql, vars, "user")
 }
 
-/*
 func simpleInlineInsertBulk(t *testing.T) {
 	gql := `mutation {
 		users(insert: [
@@ -38,7 +37,6 @@ func simpleInlineInsertBulk(t *testing.T) {
 
 	compileGQLToPSQL(t, gql, vars, "user")
 }
-*/
 
 func singleInsert(t *testing.T) {
 	gql := `mutation {
@@ -57,7 +55,7 @@ func singleInsert(t *testing.T) {
 
 func bulkInsert(t *testing.T) {
 	gql := `mutation {
-		products(name: "test", id: $id, insert: $insert) {
+		products(id: $id, insert: $insert) {
 			id
 			name
 		}
@@ -92,8 +90,11 @@ func nestedInsertManyToMany(t *testing.T) {
 			due_date
 			customer {
 				id
-				full_name
-				email
+				vip
+				user {
+					id
+					full_name
+				}
 			}
 			product {
 				id
@@ -109,8 +110,7 @@ func nestedInsertManyToMany(t *testing.T) {
 			"quantity": 5,
 			"due_date": "now",
 			"customer": {
-				"email": "thedude@rug.com",
-				"full_name": "The Dude"
+				"vip": true
 			},
 			"product": {
 				"name": "Apple",
@@ -261,8 +261,6 @@ func nestedInsertOneToOneWithConnectReverse(t *testing.T) {
 	vars := map[string]json.RawMessage{
 		"data": json.RawMessage(`{
 			"body": "a comment",
-			"created_at": "now",
-			"updated_at": "now",
 			"product": {
 				"connect": { "id": 1 }
 			}
@@ -315,8 +313,6 @@ func nestedInsertRecursive(t *testing.T) {
 		"data": json.RawMessage(`{
 			"id": 1002,
 			"body": "hello 2",
-			"created_at": "now",
-			"updated_at": "now",
 			"comments": {
 				"find": "children",
 				"connect":{ "id": 5 }
@@ -330,7 +326,7 @@ func nestedInsertRecursive(t *testing.T) {
 func TestCompileInsert(t *testing.T) {
 	t.Run("simpleInsert", simpleInsert)
 	t.Run("singleInsert", singleInsert)
-	// t.Run("simpleInlineInsertBulk", simpleInlineInsertBulk)
+	t.Run("simpleInlineInsertBulk", simpleInlineInsertBulk)
 	t.Run("bulkInsert", bulkInsert)
 	t.Run("simpleInsertWithPresets", simpleInsertWithPresets)
 	t.Run("nestedInsertManyToMany", nestedInsertManyToMany)

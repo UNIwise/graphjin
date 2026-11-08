@@ -5,52 +5,91 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dosco/graphjin/core/internal/util"
+	"github.com/dosco/graphjin/core/v3/internal/util"
 )
 
 var (
 	ErrFromEdgeNotFound   = errors.New("from edge not found")
 	ErrToEdgeNotFound     = errors.New("to edge not found")
 	ErrPathNotFound       = errors.New("path not found")
+	ErrPathSearchLimit    = errors.New("path search limit reached")
 	ErrThoughNodeNotFound = errors.New("though node not found")
+	// ErrTableNotFound reports a name that matched no table. Callers that can
+	// suggest a real name check for it; the message stays as it reads today.
+	ErrTableNotFound = errors.New("table not found")
 )
 
+// FKCandidate describes one foreign key option when an A→B relationship
+// has multiple FKs and disambiguation is required.
+type FKCandidate struct {
+	Column           string
+	TargetTable      string
+	TargetColumn     string
+	IsComposite      bool
+	CompositeColumns []string
+}
+
+// AmbiguousPathError is returned when a direct (single-hop) relationship
+// between two tables has multiple distinct foreign keys and the caller did
+// not provide a @through hint to disambiguate.
+type AmbiguousPathError struct {
+	From, To   string
+	Candidates []FKCandidate
+}
+
+func (e *AmbiguousPathError) Error() string {
+	cols := make([]string, len(e.Candidates))
+	for i, c := range e.Candidates {
+		cols[i] = c.Column
+	}
+	return fmt.Sprintf("ambiguous relationship %s -> %s: multiple foreign keys (%s)",
+		e.From, e.To, strings.Join(cols, ", "))
+}
+
+// TEdge represents a table edge for the graph
 type TEdge struct {
 	From, To, Weight int32
 
-	Type   RelType
-	LT, RT DBTable
-	L, R   DBColumn
-	CName  string
-	name   string
+	Type       RelType
+	LT, RT     DBTable
+	L, R       DBColumn
+	CName      string
+	name       string
+	ExtraPairs []ColPair // Additional column pairs for composite FKs
 }
 
+// addNode adds a table node to the graph
 func (s *DBSchema) addNode(t DBTable) int32 {
 	s.tables = append(s.tables, t)
-	n := s.rg.AddNode()
+	n := s.relationshipGraph.AddNode()
 
 	s.tindex[(t.Schema + ":" + t.Name)] = nodeInfo{n}
+	s.nameIndex[t.Name] = append(s.nameIndex[t.Name], n)
 	return n
 }
 
+// addAliases adds table aliases to the graph
 func (s *DBSchema) addAliases(t DBTable, nodeID int32, aliases []string) {
 	for _, al := range aliases {
 		s.tindex[(t.Schema + ":" + al)] = nodeInfo{nodeID}
-		s.ai[al] = nodeInfo{nodeID}
+		s.nameIndex[al] = append(s.nameIndex[al], nodeID)
+		s.tableAliasIndex[al] = nodeInfo{nodeID}
 	}
 }
 
+// GetAliases returns a map of table aliases
 func (s *DBSchema) GetAliases() map[string]DBTable {
 	ts := make(map[string]DBTable)
 
-	for name, n := range s.ai {
+	for name, n := range s.tableAliasIndex {
 		ts[name] = s.tables[int(n.nodeID)]
 	}
 	return ts
 }
 
+// IsAlias checks if a table is an alias
 func (s *DBSchema) IsAlias(name string) bool {
-	_, ok := s.ai[name]
+	_, ok := s.tableAliasIndex[name]
 	return ok
 }
 
@@ -67,32 +106,37 @@ func (s *DBSchema) IsAlias(name string) bool {
 func (s *DBSchema) addToGraph(
 	lti DBTable, lcol DBColumn,
 	rti DBTable, rcol DBColumn,
-	rt RelType) error {
+	rt RelType,
+) ([]int32, error) {
+	var err error
+
 	var rt2 RelType
 	k1 := (lti.Schema + ":" + lti.Name)
 	k2 := (rti.Schema + ":" + rti.Name)
 
 	fn, ok := s.tindex[k1]
 	if !ok {
-		return fmt.Errorf("addEdge: unknown node: %s", k1)
+		return nil, fmt.Errorf("addEdge: unknown node: %s", k1)
 	}
 
 	tn, ok := s.tindex[k2]
 	if !ok {
-		return fmt.Errorf("addEdge: unknown node: %s", k2)
+		return nil, fmt.Errorf("addEdge: unknown node: %s", k2)
 	}
 
 	ln := fn.nodeID
 	rn := tn.nodeID
 
 	var weight int32 = 1
-	relT := getRelName(lcol.Name)
+	relT := GetRelName(lcol.Name)
 
 	switch rt {
 	case RelOneToOne:
 		rt2 = RelOneToMany
+		relT = nonConflictingRelName(lti, lcol, relT, rti.Name)
 	case RelOneToMany:
 		rt2 = RelOneToOne
+		relT = nonConflictingRelName(lti, lcol, relT, rti.Name)
 	case RelPolymorphic:
 		rt2 = rt
 		relT = rti.Name
@@ -102,13 +146,16 @@ func (s *DBSchema) addToGraph(
 		relT = rti.Name
 		weight = 5
 	case RelRecursive:
+		rt2 = rt
 		weight = 10
 	case RelRemote:
 		weight = 8
 		relT = rti.Name
 	default:
-		return nil
+		return nil, nil
 	}
+
+	var edgeID1, edgeID2 int32
 
 	// Add edge from table -> foreign key table
 	e1 := TEdge{
@@ -120,8 +167,9 @@ func (s *DBSchema) addToGraph(
 		L: lcol, R: rcol,
 		CName: lcol.Name,
 	}
-	if err := s.addEdge(lti.Name, e1, true); err != nil {
-		return err
+
+	if edgeID1, err = s.addEdge(lti.Name, e1, true); err != nil {
+		return nil, err
 	}
 
 	// Add reverse edge from parent table -> column_name
@@ -135,48 +183,95 @@ func (s *DBSchema) addToGraph(
 		CName: lcol.Name,
 	}
 
-	if err := s.addEdge(relT, e2, true); err != nil {
-		return err
+	if edgeID2, err = s.addEdge(relT, e2, true); err != nil {
+		return nil, err
 	}
 
+	if err := s.relationshipGraph.UpdateEdge(ln, rn, edgeID1, edgeID2); err != nil {
+		return nil, err
+	}
+
+	if err := s.relationshipGraph.UpdateEdge(rn, ln, edgeID2, edgeID1); err != nil {
+		return nil, err
+	}
+
+	edgeIDs := []int32{edgeID1, edgeID2}
 	if rti.Name != relT {
-		if err := s.addEdge(rti.Name, e2, false); err != nil {
-			return err
+		edgeID, err := s.addEdge(rti.Name, e2, false)
+		if err != nil {
+			return nil, err
 		}
+		edgeIDs = append(edgeIDs, edgeID)
+	}
+	if alias := lcol.FKeyAlias; alias != "" && alias != relT && alias != rti.Name {
+		edgeID, err := s.addEdge(alias, e2, false)
+		if err != nil {
+			return nil, err
+		}
+		edgeIDs = append(edgeIDs, edgeID)
 	}
 
 	// fmt.Printf("1. (%s, %d) %s.%s (%d) -> %s.%s (%d) == %s\n", lti.Name, e1.ID(), lti.Name, lcol.Name, ln.ID(), rti.Name, rcol.Name, rn.ID(), rt.String())
 	// fmt.Printf("2. (%s, %d) %s.%s (%d) -> %s.%s (%d) == %s\n", rti.Name, e2.ID(), rti.Name, rcol.Name, rn.ID(), lti.Name, lcol.Name, ln.ID(), rt2.String())
 	// fmt.Printf("3. (%s, %d) %s.%s (%d) -> %s.%s (%d) == %s\n", relT, e2.ID(), rti.Name, rcol.Name, rn.ID(), lti.Name, lcol.Name, ln.ID(), rt2.String())
 	// fmt.Println("-----")
-	return nil
+	return edgeIDs, nil
 }
 
-func (s *DBSchema) addEdge(name string, edge TEdge, inSchema bool) error {
-	edgeID, err := s.rg.AddEdge(edge.From, edge.To, edge.Weight, edge.CName)
+func nonConflictingRelName(t DBTable, c DBColumn, name, fallback string) string {
+	if _, ok := t.getColumn(name); !ok {
+		return name
+	}
+	if hasMultipleFKsToTable(t, c) {
+		return name
+	}
+	if _, ok := t.getColumn(fallback); !ok {
+		return fallback
+	}
+	return name
+}
+
+func hasMultipleFKsToTable(t DBTable, c DBColumn) bool {
+	if c.FKeyTable == "" {
+		return false
+	}
+	var n int
+	for _, col := range t.Columns {
+		if col.FKeySchema == c.FKeySchema && col.FKeyTable == c.FKeyTable {
+			n++
+			if n > 1 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// addEdge creates a relationship between two tables
+func (s *DBSchema) addEdge(name string, edge TEdge, inSchema bool,
+) (int32, error) {
+	// add edge to graph
+	edgeID, err := s.relationshipGraph.AddEdge(edge.From, edge.To,
+		edge.Weight, edge.CName)
 	if err != nil {
-		return err
+		return -1, err
 	}
 
-	ei1 := edgeInfo{nodeID: edge.From, edgeIDs: []int32{edgeID}}
-	//ei2 := edgeInfo{nodeID: edge.To, edgeIDs: []int32{edgeID}}
-
-	k1 := strings.ToLower(name)
-	//k2 := strings.ToLower(edge.RT.Name)
-
-	s.addEdgeInfo(k1, ei1)
-	//s.addEdgeInfo(k2, ei2)
+	ei := edgeInfo{nodeID: edge.From, edgeIDs: []int32{edgeID}}
+	s.addEdgeInfo(name, ei)
 
 	if inSchema {
-		edge.name = k1
+		edge.name = name
 	}
-	s.ae[edgeID] = edge
-	return nil
+	s.allEdges[edgeID] = edge
+
+	return edgeID, nil
 }
 
+// addEdgeInfo adds edge info to the index
 func (s *DBSchema) addEdgeInfo(k string, ei edgeInfo) {
-	if _, ok := s.ei[k]; ok {
-		for i, v := range s.ei[k] {
+	if eiList, ok := s.edgesIndex[k]; ok {
+		for i, v := range eiList {
 			if v.nodeID != ei.nodeID {
 				continue
 			}
@@ -185,13 +280,19 @@ func (s *DBSchema) addEdgeInfo(k string, ei edgeInfo) {
 					return
 				}
 			}
-			s.ei[k][i].edgeIDs = append(s.ei[k][i].edgeIDs, ei.edgeIDs[0])
+			edgeIDs := append(v.edgeIDs, ei.edgeIDs[0])
+			s.edgesIndex[k][i].edgeIDs = edgeIDs
 			return
 		}
 	}
-	s.ei[k] = append(s.ei[k], ei)
+	s.edgesIndex[k] = append(s.edgesIndex[k], ei)
 }
 
+// Find returns a table by schema and name. If an exact schema:name match
+// is not found, it falls back to searching across all discovered schemas.
+// When multiple schemas contain the same table name, the default schema
+// is preferred. If the table exists in multiple non-default schemas,
+// an error listing the available schemas is returned.
 func (s *DBSchema) Find(schema, name string) (DBTable, error) {
 	var t DBTable
 
@@ -199,44 +300,66 @@ func (s *DBSchema) Find(schema, name string) (DBTable, error) {
 		schema = s.DBSchema()
 	}
 
-	name = strings.TrimSuffix(name, s.SingularSuffix)
-
-	v, ok := s.tindex[(schema + ":" + name)]
-	if !ok {
-		return t, fmt.Errorf("table not found: %s.%s", schema, name)
+	// Fast path: exact schema:name match
+	if v, ok := s.tindex[(schema + ":" + name)]; ok {
+		return s.tables[v.nodeID], nil
 	}
 
-	return s.tables[v.nodeID], nil
+	// Fallback: search across all schemas by name
+	nodeIDs, ok := s.nameIndex[name]
+	if !ok || len(nodeIDs) == 0 {
+		return t, fmt.Errorf("%w: %s.%s", ErrTableNotFound, schema, name)
+	}
+
+	// Single match: unambiguous, return it
+	if len(nodeIDs) == 1 {
+		return s.tables[nodeIDs[0]], nil
+	}
+
+	// Multiple matches: prefer the default schema
+	defSchema := s.DBSchema()
+	if v, ok := s.tindex[(defSchema + ":" + name)]; ok {
+		return s.tables[v.nodeID], nil
+	}
+
+	// Multiple matches, none in default schema: report ambiguity
+	schemas := make([]string, 0, len(nodeIDs))
+	for _, nid := range nodeIDs {
+		schemas = append(schemas, s.tables[nid].Schema)
+	}
+	return t, fmt.Errorf(
+		"table '%s' found in multiple schemas: %s (use schema prefix to disambiguate)",
+		name, strings.Join(schemas, ", "))
 }
 
+// TPath represents a table path
 type TPath struct {
-	Rel RelType
-	LT  DBTable
-	LC  DBColumn
-	RT  DBTable
-	RC  DBColumn
+	Rel        RelType
+	LT         DBTable
+	LC         DBColumn
+	RT         DBTable
+	RC         DBColumn
+	ExtraPairs []ColPair // Additional column pairs for composite FKs
 }
 
+// FindPath returns a path between two tables
 func (s *DBSchema) FindPath(from, to, through string) ([]TPath, error) {
-	from = strings.ToLower(strings.TrimSuffix(from, s.SingularSuffix))
-	to = strings.ToLower(strings.TrimSuffix(to, s.SingularSuffix))
-
-	fl, ok := s.ei[from]
+	fl, ok := s.edgesIndex[from]
 	if !ok {
 		return nil, ErrFromEdgeNotFound
 	}
 
-	tl, ok := s.ei[to]
+	tl, ok := s.edgesIndex[to]
 	if !ok {
 		return nil, ErrToEdgeNotFound
 	}
 
-	res, err := s.between(fl, tl, through)
+	res, err := s.resolvePath(fl, tl, pathOptions{
+		kind:    pathThroughTable,
+		through: through,
+	})
 	if err != nil {
 		return nil, err
-	}
-	if res == nil {
-		return nil, ErrPathNotFound
 	}
 
 	// fmt.Printf("> %s (%d) -> %s (%d)\n",
@@ -245,13 +368,14 @@ func (s *DBSchema) FindPath(from, to, through string) ([]TPath, error) {
 
 	path := []TPath{}
 	for _, eid := range res.edges {
-		edge := s.ae[eid]
+		edge := s.allEdges[eid]
 		path = append(path, TPath{
-			Rel: edge.Type,
-			LT:  edge.LT,
-			LC:  edge.L,
-			RT:  edge.RT,
-			RC:  edge.R,
+			Rel:        edge.Type,
+			LT:         edge.LT,
+			LC:         edge.L,
+			RT:         edge.RT,
+			RC:         edge.R,
+			ExtraPairs: edge.ExtraPairs,
 		})
 	}
 	if len(path) == 0 {
@@ -260,157 +384,153 @@ func (s *DBSchema) FindPath(from, to, through string) ([]TPath, error) {
 	return path, nil
 }
 
+// graphResult represents a graph result
 type graphResult struct {
 	from, to edgeInfo
 	edges    []int32
 }
 
-func (s *DBSchema) between(from, to []edgeInfo, through string) (*graphResult, error) {
-	for _, f := range from {
-		for _, t := range to {
-			if res, err := s.pickPath(f, t, through); err != nil {
-				return nil, err
-			} else if res != nil {
-				return res, nil
-			}
-		}
-	}
-	return nil, nil
-}
-
-func (s *DBSchema) pickPath(f, t edgeInfo, through string) (*graphResult, error) {
-	var err error
-
-	fn := f.nodeID
-	tn := t.nodeID
-	paths := s.rg.AllPaths(fn, tn)
-
-	if through != "" {
-		if paths, err = s.pickThroughPath(paths, through); err != nil {
-			return nil, err
-		}
-	}
-
-	for _, nodes := range paths {
-		res := &graphResult{from: f, to: t}
-		ln := len(nodes)
-
-		if ln == 2 {
-			lines := s.rg.GetEdges(nodes[0], nodes[1])
-			if through != "" {
-				for _, v := range lines {
-					if v.Name == through {
-						res.edges = append(res.edges, v.ID)
-						return res, nil
-					}
-				}
-				return nil, fmt.Errorf("no relationship found through column: %s", through)
-			}
-
-			if v := pickLine(lines, f); v != nil {
-				res.edges = append(res.edges, v.ID)
-				return res, nil
-			}
-		}
-
-	outer:
-		for i := 1; i < ln; i++ {
-			fn := nodes[i-1]
-			tn := nodes[i]
-			lines := s.rg.GetEdges(fn, tn)
-
-			switch {
-			case i == 1:
-				if v := pickLine(lines, f); v != nil {
-					res.edges = append(res.edges, v.ID)
-				} else {
-					break outer
-				}
-
-			case i == (ln - 1):
-				if v := pickLine(lines, t); v != nil {
-					res.edges = append(res.edges, v.ID)
-				} else {
-					v := minWeightedLine(lines)
-					res.edges = append(res.edges, v.ID)
-				}
-				return res, nil
-
-			default:
-				v := minWeightedLine(lines)
-				res.edges = append(res.edges, v.ID)
-			}
-		}
-	}
-
-	return nil, nil
-}
-
-func (s *DBSchema) pickThroughPath(paths [][]int32, through string) ([][]int32, error) {
-	var npaths [][]int32
-
-	if len(paths) == 1 && len(paths[0]) == 2 {
-		return paths, nil
-	}
-
-	v, ok := s.tindex[(s.DBSchema() + ":" + through)]
+// FindPathByColumn returns a path between two tables, disambiguating by the FK
+// column name when the two tables have multiple foreign keys between them.
+func (s *DBSchema) FindPathByColumn(from, to, col string) ([]TPath, error) {
+	fl, ok := s.edgesIndex[from]
 	if !ok {
-		return nil, ErrThoughNodeNotFound
+		return nil, ErrFromEdgeNotFound
+	}
+	tl, ok := s.edgesIndex[to]
+	if !ok {
+		return nil, ErrToEdgeNotFound
 	}
 
-	for i := range paths {
-		for j := range paths[i] {
-			if paths[i][j] == v.nodeID {
-				npaths = append(npaths, paths[i])
-			}
-		}
+	res, err := s.resolvePath(fl, tl, pathOptions{
+		kind:    pathThroughColumn,
+		through: col,
+	})
+	if err != nil {
+		return nil, err
 	}
-	return npaths, nil
+
+	path := []TPath{}
+	for _, eid := range res.edges {
+		edge := s.allEdges[eid]
+		path = append(path, TPath{
+			Rel:        edge.Type,
+			LT:         edge.LT,
+			LC:         edge.L,
+			RT:         edge.RT,
+			RC:         edge.R,
+			ExtraPairs: edge.ExtraPairs,
+		})
+	}
+	if len(path) == 0 {
+		return nil, ErrPathNotFound
+	}
+	return path, nil
 }
 
-func pickLine(lines []util.Edge, ei edgeInfo) *util.Edge {
+func (s *DBSchema) detectDirectAmbiguityFromLines(lines []util.Edge, from edgeInfo) []FKCandidate {
+	// Dedup forward+reverse halves of the same FK constraint without
+	// silencing genuine multi-FK ambiguity. Two edges in the same bucket
+	// are "the same FK" iff they're each other's opposites — true only
+	// for self-referential FKs (recursive comments → comments). For
+	// non-recursive multi-FK (orders → users with two distinct FKs), the
+	// edges in either bucket are NOT each other's opposites — their
+	// OppIDs reference edges in the OTHER bucket. We track edge IDs as
+	// we iterate; subsequent edges that name an already-seen OppID are
+	// the recursive-pair we want to drop.
+	bucketSeen := make(map[int32]bool)
+	colSeen := make(map[string]struct{})
+	var cands []FKCandidate
+
 	for _, v := range lines {
-		for _, eid := range ei.edgeIDs {
-			if v.ID == eid {
-				return &v
+		edge, ok := s.allEdges[v.ID]
+		if !ok {
+			continue
+		}
+		// Self-referential dedup: if this edge's OppID is already in the
+		// bucket, we've already counted its constraint.
+		if v.OppID != -1 && bucketSeen[v.OppID] {
+			continue
+		}
+		bucketSeen[v.ID] = true
+
+		// Anchor: if the caller's edgeInfo lists specific edges, only
+		// count those. Empty edgeIDs means "no anchor filter" (e.g. when
+		// pickPath was called from FindPath against a name index that
+		// matched the bucket directly).
+		if len(from.edgeIDs) > 0 {
+			anchored := false
+			for _, eid := range from.edgeIDs {
+				if eid == v.ID || eid == v.OppID {
+					anchored = true
+					break
+				}
+			}
+			if !anchored {
+				continue
 			}
 		}
+
+		// Resolve the FK side of the edge: for forward edges L is the
+		// FK column; for reverse edges R is the FK column. The FK column
+		// is the one whose owning DBColumn declares FKeyTable.
+		var fkCol DBColumn
+		var refCol string
+		switch {
+		case edge.L.FKeyTable != "":
+			fkCol = edge.L
+			refCol = edge.R.Name
+		case edge.R.FKeyTable != "":
+			fkCol = edge.R
+			refCol = edge.L.Name
+		default:
+			// Neither side declares an FK — skip (ambiguous edges from
+			// non-FK relationships like polymorphic / virtual tables).
+			continue
+		}
+
+		if _, dup := colSeen[fkCol.Name]; dup {
+			continue
+		}
+		colSeen[fkCol.Name] = struct{}{}
+
+		c := FKCandidate{
+			Column:       fkCol.Name,
+			TargetTable:  fkCol.FKeyTable,
+			TargetColumn: refCol,
+		}
+		if len(edge.ExtraPairs) > 0 {
+			c.IsComposite = true
+			cols := make([]string, 0, len(edge.ExtraPairs)+1)
+			cols = append(cols, fkCol.Name)
+			for _, p := range edge.ExtraPairs {
+				if p.L.FKeyTable != "" {
+					cols = append(cols, p.L.Name)
+				} else if p.R.FKeyTable != "" {
+					cols = append(cols, p.R.Name)
+				}
+			}
+			c.CompositeColumns = cols
+		}
+		cands = append(cands, c)
 	}
-	return nil
+	return cands
 }
 
+// PathToRel converts a table path to a relationship
 func PathToRel(p TPath) DBRel {
 	return DBRel{
-		Type:  p.Rel,
-		Left:  DBRelLeft{Ti: p.LT, Col: p.LC},
-		Right: DBRelRight{Ti: p.RT, Col: p.RC},
+		Type:       p.Rel,
+		Left:       DBRelLeft{Ti: p.LT, Col: p.LC},
+		Right:      DBRelRight{Ti: p.RT, Col: p.RC},
+		ExtraPairs: p.ExtraPairs,
 	}
 }
 
-func minWeightedLine(lines []util.Edge) *util.Edge {
-	var min int32 = 100
-	var line *util.Edge
-
-	for i, v := range lines {
-		if v.Weight < min {
-			min = v.Weight
-			line = &lines[i]
-		}
-	}
-
-	if line == nil && len(lines) != 0 {
-		return &lines[0]
-	}
-
-	return line
+// String returns a string representation of a table path
+func (tp *TPath) String() string {
+	return fmt.Sprintf("(%s) %s ==> %s ==> (%s) %s",
+		tp.LT.String(), tp.LC.String(),
+		tp.Rel.String(),
+		tp.RT.String(), tp.RC.String())
 }
-
-// func (s *DBSchema) printLines(lines []util.Edge) {
-// 	for _, v := range lines {
-// 		e := s.ae[v.ID]
-// 		f := s.tables[e.From]
-// 		t := s.tables[e.To]
-// 		fmt.Printf("- (%d) %s %d -> %s %d\n", v.ID, f.Name, e.From, t.Name, e.To)
-// 	}
-// 	fmt.Println("---")
-// }

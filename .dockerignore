@@ -1,6 +1,12 @@
-demo
-tmp
-*.md
-web/build
-docker-compose.*
+.git
+.claude
+.vscode
+contract
+openspec
+chart
 docs
+*.md
+docker-compose.*
+**/node_modules
+serv/web/src
+serv/web/node_modules

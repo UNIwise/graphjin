@@ -5,17 +5,17 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"unsafe"
 )
 
-var (
-	errEOT = errors.New("end of tokens")
-)
+var errEOT = errors.New("end of tokens")
 
 const (
-	maxFields = 1200
-	maxArgs   = 25
+	maxFields        = 1200
+	maxArgs          = 25
+	maxFragmentDepth = 100
 )
 
 type ParserType int8
@@ -32,6 +32,7 @@ const (
 	NodeObj
 	NodeList
 	NodeVar
+	NodeLabel
 )
 
 type FieldType int8
@@ -45,17 +46,22 @@ const (
 type Operation struct {
 	Type       ParserType
 	Name       string
+	VarDef     []VarDef
 	Args       []Arg
 	argsA      [10]Arg
 	Directives []Directive
 	Fields     []Field
 	fieldsA    [10]Field
+	Query      []byte
+	Frags      []Fragment
 }
 
 type Fragment struct {
 	Name   string
 	On     string
 	Fields []Field
+	Value  []byte
+	depth  int // longest fragment dependency path, including this fragment
 }
 
 type Field struct {
@@ -69,6 +75,11 @@ type Field struct {
 	Directives []Directive
 	Children   []int32
 	childrenA  [5]int32
+}
+
+type VarDef struct {
+	Name string
+	Val  *Node
 }
 
 type Arg struct {
@@ -106,7 +117,9 @@ func (n *Node) Free() {
 
 type Parser struct {
 	frags     map[string]Fragment
-	fetchFrag func(name string) (string, error)
+	fragPos   map[string]int
+	resolving map[string]bool
+	fragDepth [maxFragmentDepth]int
 	input     []byte // the string being scanned
 	pos       int
 	items     []item
@@ -114,29 +127,29 @@ type Parser struct {
 	err       error
 }
 
-func Parse(gql []byte, fetchFrag func(name string) (string, error)) (Operation, error) {
+func Parse(gql []byte) (op Operation, err error) {
 	var l lexer
-	var op Operation
-	var err error
 
 	if len(gql) == 0 {
-		return op, errors.New("empty query")
+		err = errors.New("empty query")
+		return
 	}
 
 	if l, err = lex(gql); err != nil {
-		return op, err
+		return
 	}
 
 	p := Parser{
-		fetchFrag: fetchFrag,
-		input:     l.input,
-		pos:       -1,
-		items:     l.items,
+		input: l.input,
+		pos:   -1,
+		items: l.items,
 	}
 	op.Fields = op.fieldsA[:0]
 
-	s := -1
+	qs := -1
 	qf := false
+	inOperation := false
+	depth, argsDepth := 0, 0
 
 	for {
 		if p.peek(itemEOF) {
@@ -144,26 +157,52 @@ func Parse(gql []byte, fetchFrag func(name string) (string, error)) (Operation, 
 			break
 		}
 
-		if p.peekVal(fragmentToken) && p.fetchFrag == nil {
+		if !inOperation && p.peek(itemName) && p.peekVal(fragmentToken) {
 			p.ignore()
-			if _, err := p.parseFragment(); err != nil {
-				return op, err
+			if err = p.indexFragment(); err != nil {
+				return
 			}
 
 		} else {
-			if !qf &&
-				(p.peekVal(queryToken, mutationToken, fragmentToken, subscriptionToken) ||
+			if !inOperation &&
+				((p.peek(itemName) && p.peekVal(queryToken, mutationToken, subscriptionToken)) ||
 					p.peek(itemObjOpen)) {
-				s = p.pos
-				qf = true
+				inOperation = true
+				if !qf {
+					qs = p.pos
+					qf = true
+				}
 			}
-			p.ignore()
+			token := p.next()
+			switch token._type {
+			case itemArgsOpen:
+				argsDepth++
+			case itemArgsClose:
+				argsDepth--
+			case itemObjOpen:
+				depth++
+			case itemObjClose:
+				depth--
+				if depth == 0 && argsDepth == 0 {
+					inOperation = false
+				}
+			}
 		}
 	}
 
-	p.reset(s)
+	for name := range p.fragPos {
+		if _, err = p.resolveFragment(name); err != nil {
+			return
+		}
+	}
+	p.reset(qs)
 	if op, err = p.parseOp(); err != nil {
-		return op, err
+		return
+	}
+
+	op.Frags = make([]Fragment, 0, len(p.frags))
+	for _, f := range p.frags {
+		op.Frags = append(op.Frags, f)
 	}
 
 	for i, f := range op.Fields {
@@ -171,87 +210,184 @@ func Parse(gql []byte, fetchFrag func(name string) (string, error)) (Operation, 
 			op.Fields[i].Type = FieldKeyword
 		}
 	}
-	return op, nil
+	return
 }
 
-func (p *Parser) parseFragment() (Fragment, error) {
-	var err error
-	var frag Fragment
+// indexFragment records a definition without resolving its spreads. Definitions
+// may refer to fragments appearing later in the document.
+func (p *Parser) indexFragment() error {
+	pos := p.pos
+	if !p.peek(itemName, itemBoolVal) {
+		return errors.New("fragment: missing name")
+	}
+	name := p.val(p.next())
+	if p.fragPos == nil {
+		p.fragPos = make(map[string]int)
+	}
+	if _, exists := p.fragPos[name]; exists {
+		return fmt.Errorf("fragment defined more than once: %s", name)
+	}
+	p.fragPos[name] = pos
+	for !p.peek(itemObjOpen) {
+		if p.peek(itemEOF) {
+			return errors.New("fragment: missing selection set")
+		}
+		p.ignore()
+	}
+	depth := 0
+	for {
+		token := p.next()
+		switch token._type {
+		case itemObjOpen:
+			depth++
+		case itemObjClose:
+			depth--
+			if depth == 0 {
+				return nil
+			}
+		case itemEOF:
+			return errors.New("fragment: end reached before selection set was closed")
+		}
+	}
+}
 
-	if p.peek(itemName) {
+func (p *Parser) resolveFragment(name string) (Fragment, error) {
+	if frag, ok := p.frags[name]; ok {
+		return frag, p.recordFragmentDepth(frag.depth)
+	}
+	pos, ok := p.fragPos[name]
+	if !ok {
+		return Fragment{}, fmt.Errorf("fragment not defined: %s", name)
+	}
+	if p.resolving[name] {
+		return Fragment{}, fmt.Errorf("cyclic fragment reference: %s", name)
+	}
+	if len(p.resolving) >= maxFragmentDepth {
+		return Fragment{}, fmt.Errorf("fragment reference depth exceeds limit of %d", maxFragmentDepth)
+	}
+	if p.resolving == nil {
+		p.resolving = make(map[string]bool)
+	}
+	p.resolving[name] = true
+	p.fragDepth[len(p.resolving)-1] = 1
+	saved := p.pos
+	p.reset(pos)
+	frag, err := p.parseFragment()
+	p.reset(saved)
+	frag.depth = p.fragDepth[len(p.resolving)-1]
+	delete(p.resolving, name)
+	if err != nil {
+		return Fragment{}, err
+	}
+	if p.frags == nil {
+		p.frags = make(map[string]Fragment)
+	}
+	p.frags[name] = frag
+	return frag, p.recordFragmentDepth(frag.depth)
+}
+
+// Include cached dependency paths in the limit so acceptance does not depend
+// on which fragment definition was resolved first.
+func (p *Parser) recordFragmentDepth(depth int) error {
+	n := len(p.resolving)
+	if n+depth > maxFragmentDepth {
+		return fmt.Errorf("fragment reference depth exceeds limit of %d", maxFragmentDepth)
+	}
+	if n != 0 && p.fragDepth[n-1] < depth+1 {
+		p.fragDepth[n-1] = depth + 1
+	}
+	return nil
+}
+
+func (p *Parser) parseFragment() (frag Fragment, err error) {
+	s := p.curr().pos
+
+	if p.peek(itemName, itemBoolVal) {
 		frag.Name = p.val(p.next())
 	} else {
-		return frag, errors.New("fragment: missing name")
+		err = errors.New("fragment: missing name")
+		return
 	}
 
 	if p.peek(itemOn) {
 		p.ignore()
 	} else {
-		return frag, errors.New("fragment: missing 'on' keyword")
+		err = errors.New("fragment: missing 'on' keyword")
+		return
 	}
 
-	if p.peek(itemName) {
+	if p.peek(itemName, itemOn, itemBoolVal) {
 		frag.On = p.vall(p.next())
 	} else {
-		return frag, errors.New("fragment: missing table name after 'on' keyword")
+		err = errors.New("fragment: missing table name after 'on' keyword")
+		return
 	}
 
 	if p.peek(itemObjOpen) {
 		p.ignore()
 	} else {
-		return frag, fmt.Errorf("fragment: expecting a '{', got: %s", p.next())
+		err = fmt.Errorf("fragment: expecting a '{', got: %s", p.next())
+		return
 	}
 
 	frag.Fields, err = p.parseFields(frag.Fields)
 	if err != nil {
-		return frag, fmt.Errorf("fragment: %v", err)
+		return
 	}
 
-	if p.frags == nil {
-		p.frags = make(map[string]Fragment)
+	if p.peek(itemObjClose) {
+		p.ignore()
 	}
 
-	p.frags[frag.Name] = frag
+	e := p.curr().pos + 1
+	frag.Value = p.input[s:e]
 
 	return frag, nil
 }
 
-func (p *Parser) parseOp() (Operation, error) {
-	var err error
-	var typeSet bool
-	var op Operation
+func (p *Parser) parseOp() (op Operation, err error) {
+	// Start at the operation's first token. When nothing precedes the
+	// operation, start at the beginning so a leading comment is kept.
+	s := 0
+	if p.pos >= 0 && p.pos+1 < len(p.items) {
+		s = int(p.items[p.pos+1].pos)
+	}
 
 	if p.peekVal(queryToken, mutationToken, subscriptionToken) {
-		if err = p.parseOpTypeAndArgs(&op); err != nil {
-			return op, fmt.Errorf("%s: %v", op.Type, err)
-		}
-		typeSet = true
+		err = p.parseOpTypeAndArgs(&op)
+	} else if !p.peek(itemObjOpen) {
+		err = p.tokErr(`query, mutation or subscription`)
 	}
 
-	if p.peek(itemObjOpen) {
+	if err != nil {
+		return op, fmt.Errorf("%s: %v", op.Type, err)
+	}
+
+	if !p.peek(itemObjOpen) {
+		return op, p.tokErr("{")
+	}
+	p.ignore()
+
+	if op.Type == 0 {
+		op.Type = OpQuery
+	}
+
+	op.Fields, err = p.parseFields(op.Fields)
+	if err != nil {
+		return op, fmt.Errorf("%s: %v", op.Type, err)
+	}
+
+	if p.peek(itemObjClose) {
 		p.ignore()
-		if !typeSet {
-			op.Type = OpQuery
-		}
-
-		for {
-			if p.peek(itemEOF) || p.peekVal(fragmentToken) {
-				p.ignore()
-				break
-			}
-
-			op.Fields, err = p.parseFields(op.Fields)
-			if err != nil {
-				return op, fmt.Errorf("%s: %v", op.Type, err)
-			}
-		}
-	} else {
-		return op, fmt.Errorf("expecting a query, mutation or subscription, got: %s", p.next())
 	}
+
+	e := p.curr().pos + 1
+	op.Query = p.input[s:e]
+
 	return op, nil
 }
 
-func (p *Parser) parseOpTypeAndArgs(op *Operation) error {
+func (p *Parser) parseOpTypeAndArgs(op *Operation) (err error) {
 	item := p.next()
 
 	switch {
@@ -265,17 +401,14 @@ func (p *Parser) parseOpTypeAndArgs(op *Operation) error {
 
 	op.Args = op.argsA[:0]
 
-	var err error
-
-	if p.peek(itemName) {
+	if p.peek(itemName, itemOn, itemBoolVal) {
 		op.Name = p.val(p.next())
 	}
 
 	if p.peek(itemArgsOpen) {
 		p.ignore()
 
-		op.Args, err = p.parseOpParams(op.Args)
-		if err != nil {
+		if err = p.parseOpParams(op); err != nil {
 			return err
 		}
 	}
@@ -286,8 +419,7 @@ func (p *Parser) parseOpTypeAndArgs(op *Operation) error {
 			return err
 		}
 	}
-
-	return nil
+	return
 }
 
 func ParseArgValue(argVal string, json bool) (*Node, error) {
@@ -306,51 +438,33 @@ func ParseArgValue(argVal string, json bool) (*Node, error) {
 		items: l.items,
 		json:  json,
 	}
-	return p.parseValue()
-}
-
-func ParseFragment(fragment string, fetchFrag func(name string) (string, error)) (
-	Fragment, error) {
-	var f Fragment
-	var err error
-
-	l, err := lex([]byte(fragment))
+	node, err := p.parseValue()
 	if err != nil {
-		return f, err
+		return nil, err
 	}
-
-	p := Parser{
-		fetchFrag: fetchFrag,
-		input:     l.input,
-		pos:       -1,
-		items:     l.items,
+	if !p.peek(itemEOF) {
+		return nil, errors.New("unexpected input after argument value")
 	}
-
-	if p.peekVal(fragmentToken) {
-		p.ignore()
-		f, err = p.parseFragment()
-	}
-	return f, err
+	return node, nil
 }
 
 func (p *Parser) parseFields(fields []Field) ([]Field, error) {
 	var err error
 	st := NewStack()
 
-	if !p.peek(itemName, itemSpread) {
-		return nil, fmt.Errorf("unexpected token: %s", p.peekNext())
+	if !p.peek(itemName, itemOn, itemBoolVal, itemSpread) {
+		return nil, p.tokErr(`field name or ...Fragment`)
 	}
 
 	for {
 		if p.peek(itemEOF) {
 			p.ignore()
-			return nil, errors.New("invalid query")
+			return nil, errors.New("invalid query: end reached before query was closed")
 		}
 
 		if p.peek(itemObjClose) {
-			p.ignore()
-
 			if st.Len() != 0 {
+				p.ignore()
 				st.Pop()
 				continue
 			} else {
@@ -384,8 +498,8 @@ func (p *Parser) parseFields(fields []Field) ([]Field, error) {
 }
 
 func (p *Parser) parseNormalFields(st *Stack, fields []Field) ([]Field, error) {
-	if !p.peek(itemName) {
-		return nil, fmt.Errorf("expecting an alias or field name, got: %s", p.next())
+	if !p.peek(itemName, itemOn, itemBoolVal) {
+		return nil, p.tokErr(`expecting an alias or field name`)
 	}
 
 	fields = append(fields, Field{ID: int32(len(fields))})
@@ -420,7 +534,6 @@ func (p *Parser) parseNormalFields(st *Stack, fields []Field) ([]Field, error) {
 func (p *Parser) parseFragmentFields(st *Stack, fields []Field) ([]Field, error) {
 	var err error
 	var fr Fragment
-	var ok bool
 
 	pid := st.Peek()
 
@@ -443,31 +556,23 @@ func (p *Parser) parseFragmentFields(st *Stack, fields []Field) ([]Field, error)
 		}
 
 	} else {
-		if !p.peek(itemName) {
+		if !p.peek(itemName, itemOn, itemBoolVal) {
 			return nil, fmt.Errorf("expecting a fragment name, got: %s", p.next())
 		}
 
 		name := p.val(p.next())
 
-		fr, ok = p.frags[name]
-		if !ok {
-			if p.fetchFrag != nil {
-				fval, err := p.fetchFrag(name)
-				if err != nil {
-					return nil, fmt.Errorf("fragment not found: %s", name)
-				}
-
-				if fr, err = ParseFragment(fval, p.fetchFrag); err != nil {
-					return nil, err
-				}
-			} else {
-				return nil, fmt.Errorf("fragment not defined: %s", name)
-			}
+		fr, err = p.resolveFragment(name)
+		if err != nil {
+			return nil, err
 		}
 
 		ff := fr.Fields
 
 		n := int32(len(fields))
+		if len(fields)+len(ff) > maxFields {
+			return nil, fmt.Errorf("too many fields (max %d)", maxFields)
+		}
 		fields = append(fields, ff...)
 
 		for i := 0; i < len(ff); i++ {
@@ -511,12 +616,14 @@ func (p *Parser) parseFragmentFields(st *Stack, fields []Field) ([]Field, error)
 
 func (p *Parser) parseField(f *Field) error {
 	var err error
+
+	// hold onto name to while we check if its an alias
 	v := p.next()
 
 	if p.peek(itemColon) {
 		p.ignore()
 
-		if p.peek(itemName) {
+		if p.peek(itemName, itemOn, itemBoolVal) {
 			f.Alias = p.val(v)
 			f.Name = p.val(p.next())
 		} else {
@@ -543,20 +650,64 @@ func (p *Parser) parseField(f *Field) error {
 	return nil
 }
 
-func (p *Parser) parseOpParams(args []Arg) ([]Arg, error) {
+func (p *Parser) parseOpParams(op *Operation) (err error) {
 	for {
-		if len(args) >= maxArgs {
-			return nil, fmt.Errorf("too many args (max %d)", maxArgs)
+		if len(op.VarDef) >= maxArgs {
+			err = fmt.Errorf("too many variable defintions (max %d)", maxArgs)
+			break
 		}
 
-		if p.peek(itemEOF, itemArgsClose) {
+		if p.peek(itemArgsClose) {
 			p.ignore()
 			break
 		}
-		p.next()
+
+		if !p.peek(itemEOF, itemVariable) {
+			p.ignore()
+			continue
+		}
+
+		if err = p.parseVarDef(op); err != nil {
+			return
+		}
+	}
+	return
+}
+
+func (p *Parser) parseVarDef(op *Operation) (err error) {
+	name := p.val(p.next())
+
+	// Variable type declarations precede defaults in standard GraphQL syntax.
+	if p.peek(itemColon) {
+		p.ignore()
+		for p.peek(itemName, itemListOpen, itemListClose, itemRequired) {
+			p.ignore()
+		}
 	}
 
-	return args, nil
+	if !p.peek(itemEquals) {
+		return
+	}
+	p.ignore()
+
+	if !p.peek(itemName,
+		itemOn,
+		itemStringVal,
+		itemNumberVal,
+		itemBoolVal,
+		itemObjOpen,
+		itemListOpen) {
+		err = p.tokErr(`string, number, bool, object or list`)
+		return
+	}
+
+	val, err := p.parseValue()
+	if err != nil {
+		return
+	}
+
+	op.VarDef = append(op.VarDef, VarDef{Name: name, Val: val})
+	return
 }
 
 func (p *Parser) parseArgs(args []Arg) ([]Arg, error) {
@@ -564,9 +715,9 @@ func (p *Parser) parseArgs(args []Arg) ([]Arg, error) {
 
 	var argNameTypes []MType
 	if p.json {
-		argNameTypes = []MType{itemName, itemStringVal}
+		argNameTypes = []MType{itemName, itemOn, itemBoolVal, itemStringVal}
 	} else {
-		argNameTypes = []MType{itemName}
+		argNameTypes = []MType{itemName, itemOn, itemBoolVal}
 	}
 
 	for {
@@ -580,7 +731,7 @@ func (p *Parser) parseArgs(args []Arg) ([]Arg, error) {
 		}
 
 		if !p.peek(argNameTypes...) {
-			return nil, fmt.Errorf("expecting a label got: %s (%s)",
+			return nil, fmt.Errorf("expecting a label got: %s (value: '%s')",
 				p.peekNext(),
 				p.peekNextType().String())
 		}
@@ -604,7 +755,7 @@ func (p *Parser) parseDirective(dirs []Directive) ([]Directive, error) {
 	var err error
 	var d Directive
 
-	if p.peek(itemName) {
+	if p.peek(itemName, itemOn, itemBoolVal) {
 		d.Name = p.val(p.next())
 	} else {
 		return nil, fmt.Errorf("expecting directive name after @ symbol got: %s", p.peekNext())
@@ -628,6 +779,9 @@ func (p *Parser) parseList() (*Node, error) {
 
 	var ty ParserType
 	for {
+		if p.peek(itemEOF) {
+			return nil, errors.New("end reached before list was closed")
+		}
 		if p.peek(itemListClose) {
 			p.ignore()
 			break
@@ -638,14 +792,12 @@ func (p *Parser) parseList() (*Node, error) {
 		}
 		if ty == 0 {
 			ty = node.Type
-		} else if ty != node.Type {
-			return nil, errors.New("All values in a list must be of the same type")
 		}
+		// } else if ty != node.Type {
+		// 	return nil, errors.New("all values in a list must be of the same type")
+		// }
 		node.Parent = parent
 		nodes = append(nodes, node)
-	}
-	if len(nodes) == 0 {
-		return nil, errors.New("List cannot be empty")
 	}
 
 	parent.Type = NodeList
@@ -662,15 +814,18 @@ func (p *Parser) parseObj() (*Node, error) {
 
 	var argNameTypes []MType
 	if p.json {
-		argNameTypes = []MType{itemName, itemStringVal}
+		argNameTypes = []MType{itemName, itemOn, itemBoolVal, itemStringVal}
 	} else {
-		argNameTypes = []MType{itemName}
+		argNameTypes = []MType{itemName, itemOn, itemBoolVal}
 	}
 
 	parent.CMap = make(map[string]*Node)
 
 	for {
-		if p.peek(itemEOF, itemObjClose) {
+		if p.peek(itemEOF) {
+			return nil, errors.New("end reached before object was closed")
+		}
+		if p.peek(itemObjClose) {
 			p.ignore()
 			break
 		}
@@ -725,14 +880,18 @@ func (p *Parser) parseValue() (*Node, error) {
 		node.Type = NodeStr
 	case itemBoolVal:
 		node.Type = NodeBool
-	case itemName:
-		node.Type = NodeStr
 	case itemVariable:
 		node.Type = NodeVar
+	case itemName, itemOn:
+		node.Type = NodeLabel
 	default:
-		return nil, fmt.Errorf("expecting a number, string, object, list or variable as an argument value (not %s)", p.val(p.next()))
+		return nil, fmt.Errorf("expecting a number, string, object, list or variable as an argument value (not '%s' of type '%s')", p.val(item), item._type)
+
 	}
 	node.Val = p.val(item)
+	if item._type == itemBoolVal {
+		node.Val = strings.ToLower(node.Val)
+	}
 
 	return node, nil
 }
@@ -749,12 +908,9 @@ func (p *Parser) vall(v item) string {
 func (p *Parser) peek(types ...MType) bool {
 	n := p.pos + 1
 	l := len(types)
-	// if p.items[n]._type == itemEOF {
-	// 	return false
-	// }
 
 	if n >= len(p.items) {
-		return types[0] == itemEOF
+		return false
 	}
 
 	if l == 1 {
@@ -791,6 +947,13 @@ func (p *Parser) peekVal(values ...[]byte) bool {
 		}
 	}
 	return false
+}
+
+func (p *Parser) curr() item {
+	if p.pos == -1 {
+		return item{}
+	}
+	return p.items[p.pos]
 }
 
 func (p *Parser) next() item {
