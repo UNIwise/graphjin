@@ -89,3 +89,15 @@ docs/DESIGN-OPENAPI-TOPLEVEL.md
 __pycache__/
 *.pyc
 *.egg-info/
+
+# local tooling and working notes, not part of this repository
+/.claude/
+/.claude-plugin/
+/.codex/
+/.cursor/
+/claude-plugins/
+/AGENTS.md
+/AGENTIC.md
+/contract/
+/openspec/
+examples/pcb-fab/mockapi/mockapi

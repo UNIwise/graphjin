@@ -1,0 +1,139 @@
+name: Build
+
+on:
+  push:
+    branches: [master]
+    paths-ignore: ["**.md", "docs/**"]
+  pull_request:
+    branches: [master]
+    paths-ignore: ["**.md", "docs/**"]
+  workflow_dispatch: {}
+
+# Read-only token, no secrets and GitHub-hosted runners only: nothing here publishes
+# or deploys. Releases and image pushes are not part of this repository's workflows.
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.27.3"
+  GOLANGCI_LINT_VERSION: v2.15.0
+  GOFLAGS: -buildvcs=false
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          install-only: true
+
+      - name: Lint every module
+        run: |
+          status=0
+          for dir in $(find . -name go.mod -exec dirname {} \; | sort); do
+            echo "===> Linting module: $dir"
+            (cd "$dir" && golangci-lint run --timeout=10m) || status=1
+          done
+          exit $status
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      # ./tests is the database-backed suite; it runs in the integration job below,
+      # one database at a time. Without -db it would start every database container.
+      - name: Test every module
+        run: |
+          status=0
+          for dir in $(find . -name go.mod -not -path './tests/*' -exec dirname {} \; | sort); do
+            echo "===> Testing module: $dir"
+            (cd "$dir" && go test ./...) || status=1
+          done
+          exit $status
+
+  integration:
+    name: Integration (${{ matrix.db }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - db: postgres
+            tags: ""
+          - db: mysql
+            tags: mysql
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      # The suite starts the database in a container (Docker is available on the runner).
+      - name: Run the ${{ matrix.db }} suite
+        working-directory: tests
+        run: go test -timeout 8m -count=1 -db=${{ matrix.db }} -tags "${{ matrix.tags }}" .
+
+  scan:
+    name: Vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Scan the source tree
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          path: .
+          fail-build: true
+          severity-cutoff: high
+          output-format: table
+
+  image:
+    name: Image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Lint the Dockerfile
+        run: docker run --rm -i hadolint/hadolint:v2.15.1-alpine hadolint --failure-threshold warning - < Dockerfile
+
+      - name: Build the image
+        run: docker build --pull -t graphjin:ci .
