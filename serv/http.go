@@ -85,16 +85,7 @@ func apiV1Handler(s1 *Service) http.Handler {
 	return h
 }
 
-func ReadUserIP(r *http.Request) string {
-	IPAddress := r.Header.Get("X-Real-Ip")
-	if IPAddress == "" {
-		IPAddress = r.Header.Get("X-Forwarded-For")
-	}
-	if IPAddress == "" {
-		IPAddress = r.RemoteAddr
-	}
-	return IPAddress
-}
+const privateGatewayJWTHeader = "X-Private-Gateway-JWT"
 
 func (s1 *Service) apiV1() http.Handler {
 	h := func(w http.ResponseWriter, r *http.Request) {
@@ -176,8 +167,8 @@ func (s1 *Service) apiV1() http.Handler {
 				return
 			}
 
-			ip := ReadUserIP(r)
-			hasAccess, err := opaClient.HasAccess(policy, r.Header.Get("Authorization"), ip, req.Vars)
+			gatewayJWT := r.Header.Get(privateGatewayJWTHeader)
+			hasAccess, err := opaClient.HasAccess(policy, r.Header.Get("Authorization"), gatewayJWT, req.Vars)
 			if err != nil {
 				s.log.Error(errors.Wrap(err, "failed evaluate OPA access"))
 				renderErr(w, errUnauthorized)

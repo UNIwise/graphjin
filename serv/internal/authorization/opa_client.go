@@ -5,7 +5,7 @@ import (
 )
 
 type OpaClient interface {
-	HasAccess(policy string, jwt string, ipAddress string, args interface{}) (bool, error)
+	HasAccess(policy string, jwt string, gatewayJWT string, args interface{}) (bool, error)
 }
 
 type OpaClientImpl struct {

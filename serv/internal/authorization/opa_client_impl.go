@@ -8,9 +8,9 @@ import (
 )
 
 type HasAccessRequest struct {
-	Token     string      `json:"token"`
-	Args      interface{} `json:"args"`
-	IPAddress string      `json:"ipAddress"`
+	Token        string      `json:"token"`
+	Args         interface{} `json:"args"`
+	GatewayToken string      `json:"gatewayToken"`
 }
 
 type HasAccessResponse struct {
@@ -33,11 +33,11 @@ func parseToken(jwt string) string {
 	return ""
 }
 
-func (s *OpaClientImpl) HasAccess(policy string, jwt string, ipAddress string, args interface{}) (bool, error) {
+func (s *OpaClientImpl) HasAccess(policy string, jwt string, gatewayJWT string, args interface{}) (bool, error) {
 	req := HasAccessRequest{
-		Token:     parseToken(jwt),
-		Args:      args,
-		IPAddress: ipAddress,
+		Token:        parseToken(jwt),
+		Args:         args,
+		GatewayToken: gatewayJWT,
 	}
 
 	var res HasAccessResponse
